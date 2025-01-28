@@ -75,6 +75,7 @@ def compute_features_for_wave_list(wave_list_data):
     keys_list = []
     mfcc_list = []
     hist_list = []
+    spectral_list = []
     
     for category, filename, sample_rate, sound_data in wave_list_data:
         audio_key = f"{category}_{filename}"
@@ -88,25 +89,65 @@ def compute_features_for_wave_list(wave_list_data):
         
         # 2) Extract binned spectrogram histogram
         hist_feature_vector = extract_binned_spectrogram_hist(sound_data, sample_rate)
+
+        # 3) Extract spectral features (centroid, contrast, pitch)
+        spectral_feature_vector = extract_spectral_features(sound_data, sample_rate)
         
         # Store results
         mfcc_list.append(mfcc_feature_vector)
         hist_list.append(hist_feature_vector)
+        spectral_list.append(spectral_feature_vector)
     
-    return keys_list, mfcc_list, hist_list
+    return keys_list, mfcc_list, hist_list, spectral_list
 
 
-def save_features_to_npz(keys_list, mfcc_list, hist_list, out_file="features.npz"):
+def save_features_to_npz(keys_list, mfcc_list, hist_list, spectral_list, out_file="features.npz"):
     """
     Converts the lists of feature vectors into numpy arrays and saves them to npz.
     """
     mfcc_array = np.vstack(mfcc_list)  # shape: (num_files, vector_dim)
     hist_array = np.vstack(hist_list)  # shape: (num_files, vector_dim)
+    spectral_array = np.vstack(spectral_list)
     
     np.savez(
         out_file,
         keys=keys_list,
         mfcc=mfcc_array,
-        hist=hist_array
+        hist=hist_array,
+        spectral=spectral_array
     )
+    
     print(f"Features saved to {out_file}")
+
+def extract_spectral_features(sound_data, sample_rate, n_fft=2048, hop_length=512):
+    """
+    Extracts spectral features: spectral centroid, spectral contrast, and pitch.
+    Returns a feature vector combining these features.
+    """
+    sound_data_float = sound_data.astype(np.float32)
+
+    # Spectral Centroid
+    spectral_centroid = librosa.feature.spectral_centroid(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
+    spectral_centroid_mean = np.mean(spectral_centroid)
+    spectral_centroid_std = np.std(spectral_centroid)
+
+    # Spectral Contrast
+    spectral_contrast = librosa.feature.spectral_contrast(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
+    spectral_contrast_mean = np.mean(spectral_contrast, axis=1)
+    spectral_contrast_std = np.std(spectral_contrast, axis=1)
+
+    # Pitch (Fundamental Frequency)
+    pitches, magnitudes = librosa.piptrack(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
+    pitch_mean = np.mean(pitches[pitches > 0]) if pitches[pitches > 0].size > 0 else 0
+    pitch_std = np.std(pitches[pitches > 0]) if pitches[pitches > 0].size > 0 else 0
+
+    # Combine features into one vector
+    feature_vector = np.concatenate(
+        [
+            [spectral_centroid_mean, spectral_centroid_std],  # Spectral Centroid
+            spectral_contrast_mean, spectral_contrast_std,    # Spectral Contrast
+            [pitch_mean, pitch_std]                          # Pitch
+        ]
+    )
+
+    return feature_vector
