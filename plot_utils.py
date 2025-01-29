@@ -9,6 +9,27 @@ def play_sound(sound_data, sample_rate):
     """
     return ipd.display(ipd.Audio(data=sound_data, rate=sample_rate))
 
+def create_histogram_subplot(ax, sound_data, filename, bins_list):
+    histograms = {}
+    for i, bins in enumerate(bins_list):
+        hist, _ = np.histogram(sound_data, bins=bins, density=True)  # Calculate histogram
+        histograms[f"bins_set_{i+1}"] = hist  # Store histogram
+        
+        # Plot histograms for each bin set (overlayed)
+        ax.plot(bins[:-1], hist, label=f'Bin Set {i+1}', alpha=0.7,drawstyle='steps-pre',picker=True, animated=True)
+    
+    ax.set_title(f'Histogram (Multiple Bin Sets)\n{filename}')
+    ax.set_xlabel("Amplitude")
+    ax.set_ylabel("Frequency")
+    ax.legend()
+    return histograms  # Return all histograms for feature extraction
+
+bins_set1 = np.linspace(-32768, 32767, 51)  # 50 bins for detailed distribution analysis (higher granularity)
+bins_set2 = np.linspace(-32768, 32767, 21)  # 20 bins for moderate granularity (balanced overview)
+bins_set3 = np.linspace(-32768, 32767, 11)  # 10 bins for a broader overview (coarser granularity)
+bins_list = [bins_set1, bins_set2, bins_set3]  # Combine all bin sets
+
+
 def create_waveform_subplot(ax, sample_rate, sound_data, filename):
     """
     Plots the waveform on the given Axes object (ax).
