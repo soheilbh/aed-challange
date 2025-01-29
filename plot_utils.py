@@ -53,14 +53,6 @@ def create_spectrogram_subplot(ax, sample_rate, sound_data, filename):
     ax.set_ylabel("Frequency [Hz]")
     return im
 
-def create_histogram_subplot(ax, sound_data, filename):
-    """
-    Plots a histogram of the amplitude values.
-    """
-    ax.hist(sound_data, bins=50)
-    ax.set_title(f'Histogram\n{filename}')
-    ax.set_xlabel("Amplitude")
-    ax.set_ylabel("Count")
 
 def visualize_category_sounds(wave_list_data):
     """
@@ -73,7 +65,8 @@ def visualize_category_sounds(wave_list_data):
         if cat not in categories:
             categories.append(cat)
     
-    # Iterate through each category
+    # Iterate through unique categories
+    all_histograms = {}  # To store histogram features for all sounds
     for cat in categories:
         # Filter waves for this category
         category_waves = [wave for wave in wave_list_data if wave[0] == cat]
@@ -88,6 +81,7 @@ def visualize_category_sounds(wave_list_data):
         print(f"Analyzing {cat} category...")
         
         # For each file in the category
+        category_histograms = []
         for idx, (cat, filename, sample_rate, sound_data) in enumerate(category_waves):
             # Play the audio in the notebook
             play_sound(sound_data, sample_rate)
@@ -102,7 +96,12 @@ def visualize_category_sounds(wave_list_data):
             
             # Histogram subplot
             ax_hist = plt.subplot(3, num_files, 2 * num_files + idx + 1)
-            create_histogram_subplot(ax_hist, sound_data, filename)
+            histograms = create_histogram_subplot(ax_hist, sound_data, filename, bins_list)
+            category_histograms.append(histograms)
         
+        all_histograms[cat] = category_histograms  # Store all histograms for this category
         plt.tight_layout()
         plt.show()
+        
+    return all_histograms
+# Visualize sounds and calculate histograms
