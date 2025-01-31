@@ -1,0 +1,17 @@
+### Read section 2.2 of Chandola et al. Answer the following question, in the context of the analysis of sound from say 250 sleeping rooms, monitored from a single location, what category of anomaly do the following situations constitute?
+
+**Patient singing at 2 AM**: Since the patient sings at 2 AM (not at other times of the day) in a sleeping room, it is a "Contextual Anomaly" (such as an investigation in a temperature time series and observing 35°F being normal in winter but abnormal in summer).
+
+**Aggressive shouting**: This is a rare behavior (without time and location consideration) compared to normal behavior, so it is a "Point Anomaly" (such as credit card fraud detection).
+
+**May 4 commemoration of the dead**: Since the behavior of a huge number of people changes on that night (not only one or a few of them), it is a Collective Anomaly (such as human electrocardiogram output).
+
+
+### If you had a contextual anomaly as category in the above question, then point out the contextual and behavioral attributes.
+For the "Patient Singing at 2 AM":
+- **Contextual Attributes**:
+  - Time: 2 AM
+  - Location: Sleeping room
+- **Behavioral Attributes**:
+  - Singing: Which is a normal behavior that becomes anomalous in this specific context due to it's specific contextual Attributes.
+
