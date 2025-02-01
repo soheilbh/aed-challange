@@ -19,6 +19,28 @@ def extract_mfcc(sound_data, sample_rate, n_mfcc=13, n_fft=2048, hop_length=512)
     )
     return mfcc
 
+def extract_spectral_centroid(sound_data, sample_rate, n_fft=2048, hop_length=512):
+    """ Extracts the spectral centroid feature (Mean & Std) """
+    sound_data_float = sound_data.astype(np.float32)
+    centroid = librosa.feature.spectral_centroid(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
+    return np.array([np.mean(centroid), np.std(centroid)])
+
+def extract_spectral_contrast(sound_data, sample_rate, n_fft=2048, hop_length=512):
+    """ Extracts the spectral contrast feature (Mean & Std for each band) """
+    sound_data_float = sound_data.astype(np.float32)
+    contrast = librosa.feature.spectral_contrast(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
+    contrast_mean = np.mean(contrast, axis=1)
+    contrast_std = np.std(contrast, axis=1)
+    return np.concatenate([contrast_mean, contrast_std])
+
+def extract_pitch(sound_data, sample_rate, n_fft=2048, hop_length=512):
+    """ Extracts pitch feature (Mean & Std) """
+    sound_data_float = sound_data.astype(np.float32)
+    pitches, _ = librosa.piptrack(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
+    pitch_values = pitches[pitches > 0]
+    pitch_mean = np.mean(pitch_values) if pitch_values.size > 0 else 0
+    pitch_std = np.std(pitch_values) if pitch_values.size > 0 else 0
+    return np.array([pitch_mean, pitch_std])
 
 def extract_binned_spectrogram_hist(sound_data, sample_rate, 
                                     n_fft=2048, hop_length=512, 
@@ -61,93 +83,51 @@ def extract_binned_spectrogram_hist(sound_data, sample_rate,
     
     return np.array(hist_features)
 
-
 def compute_features_for_wave_list(wave_list_data):
     """
     Loop over wave_list_data ([(category, filename, sr, sound_data), ...])
-    and compute features (e.g., MFCC and binned hist).
+    and compute all features (MFCC, binned spectrogram hist, and spectral features).
     
     Returns:
         keys_list: list of unique IDs (like "category_filename")
-        mfcc_list: list of MFCC feature vectors (mean+std for each file)
-        hist_list: list of binned spectrogram hist vectors
+        feature_list: list of combined feature vectors
     """
     keys_list = []
-    mfcc_list = []
-    hist_list = []
-    spectral_list = []
-    
+    feature_list = []
+
     for category, filename, sample_rate, sound_data in wave_list_data:
         audio_key = f"{category}_{filename}"
         keys_list.append(audio_key)
-        
-        # 1) Extract MFCC, then reduce to mean & std
+
+        # Extract features
         mfcc_matrix = extract_mfcc(sound_data, sample_rate)
         mfcc_mean = np.mean(mfcc_matrix, axis=1)
         mfcc_std = np.std(mfcc_matrix, axis=1)
         mfcc_feature_vector = np.concatenate([mfcc_mean, mfcc_std])
-        
-        # 2) Extract binned spectrogram histogram
+
         hist_feature_vector = extract_binned_spectrogram_hist(sound_data, sample_rate)
 
-        # 3) Extract spectral features (centroid, contrast, pitch)
-        spectral_feature_vector = extract_spectral_features(sound_data, sample_rate)
-        
-        # Store results
-        mfcc_list.append(mfcc_feature_vector)
-        hist_list.append(hist_feature_vector)
-        spectral_list.append(spectral_feature_vector)
-    
-    return keys_list, mfcc_list, hist_list, spectral_list
+        spectral_centroid = extract_spectral_centroid(sound_data, sample_rate)
+        spectral_contrast = extract_spectral_contrast(sound_data, sample_rate)
+        pitch_features = extract_pitch(sound_data, sample_rate)
 
+        # Combine all features into one vector
+        feature_vector = np.concatenate([
+            mfcc_feature_vector,
+            hist_feature_vector,
+            spectral_centroid,
+            spectral_contrast,
+            pitch_features
+        ])
 
-def save_features_to_npz(keys_list, mfcc_list, hist_list, spectral_list, out_file="features.npz"):
+        feature_list.append(feature_vector)
+
+    return keys_list, feature_list
+
+def save_features_to_npz(keys_list, feature_list, out_file="features.npz"):
     """
-    Converts the lists of feature vectors into numpy arrays and saves them to npz.
+    Saves feature vectors to an NPZ file.
     """
-    mfcc_array = np.vstack(mfcc_list)  # shape: (num_files, vector_dim)
-    hist_array = np.vstack(hist_list)  # shape: (num_files, vector_dim)
-    spectral_array = np.vstack(spectral_list)
-    
-    np.savez(
-        out_file,
-        keys=keys_list,
-        mfcc=mfcc_array,
-        hist=hist_array,
-        spectral=spectral_array
-    )
-    
+    feature_array = np.vstack(feature_list)  
+    np.savez(out_file, keys=keys_list, features=feature_array)
     print(f"Features saved to {out_file}")
-
-def extract_spectral_features(sound_data, sample_rate, n_fft=2048, hop_length=512):
-    """
-    Extracts spectral features: spectral centroid, spectral contrast, and pitch.
-    Returns a feature vector combining these features.
-    """
-    sound_data_float = sound_data.astype(np.float32)
-
-    # Spectral Centroid
-    spectral_centroid = librosa.feature.spectral_centroid(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
-    spectral_centroid_mean = np.mean(spectral_centroid)
-    spectral_centroid_std = np.std(spectral_centroid)
-
-    # Spectral Contrast
-    spectral_contrast = librosa.feature.spectral_contrast(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
-    spectral_contrast_mean = np.mean(spectral_contrast, axis=1)
-    spectral_contrast_std = np.std(spectral_contrast, axis=1)
-
-    # Pitch (Fundamental Frequency)
-    pitches, magnitudes = librosa.piptrack(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
-    pitch_mean = np.mean(pitches[pitches > 0]) if pitches[pitches > 0].size > 0 else 0
-    pitch_std = np.std(pitches[pitches > 0]) if pitches[pitches > 0].size > 0 else 0
-
-    # Combine features into one vector
-    feature_vector = np.concatenate(
-        [
-            [spectral_centroid_mean, spectral_centroid_std],  # Spectral Centroid
-            spectral_contrast_mean, spectral_contrast_std,    # Spectral Contrast
-            [pitch_mean, pitch_std]                          # Pitch
-        ]
-    )
-
-    return feature_vector
