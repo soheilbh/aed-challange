@@ -92,25 +92,30 @@ def compute_combined_features_for_wave_list(wave_list_data):
         class_number = int(filename.split('-')[-1].replace('.wav', ''))
         keys_list.append(class_number)
 
-        # Extract features
-        mfcc_matrix = extract_mfcc(sound_data, sample_rate)
-        mfcc_mean = np.mean(mfcc_matrix, axis=1)
-        mfcc_std = np.std(mfcc_matrix, axis=1)
-        mfcc_feature_vector = np.concatenate([mfcc_mean, mfcc_std])
+        # Step 1: Extract MFCCs and delta MFCCs
+        mfcc_matrix = librosa.feature.mfcc(y=sound_data, sr=sample_rate, n_mfcc=13)
+        delta_mfcc = librosa.feature.delta(mfcc_matrix)
 
+        # Compute mean and std of MFCCs and delta MFCCs
+        mfcc_mean = np.mean(mfcc_matrix, axis=1)
+        delta_mfcc_mean = np.mean(delta_mfcc, axis=1)
+        mfcc_feature_vector = np.concatenate([mfcc_mean, delta_mfcc_mean])
+
+        # Step 2: Extract histogram features
         hist_feature_vector = extract_binned_spectrogram_hist(sound_data, sample_rate)
 
-        spectral_centroid = extract_spectral_centroid(sound_data, sample_rate)
-        spectral_contrast = extract_spectral_contrast(sound_data, sample_rate)
-        pitch_features = extract_pitch(sound_data, sample_rate)
+        # Step 3: Extract spectral features
+        spectral_centroid = np.mean(librosa.feature.spectral_centroid(y=sound_data, sr=sample_rate))
+        spectral_contrast = np.mean(librosa.feature.spectral_contrast(y=sound_data, sr=sample_rate))
+        pitch_features = np.mean(librosa.feature.zero_crossing_rate(y=sound_data))
 
-        # Combine all features into one vector
+        # Step 4: Combine all features into one vector
         feature_vector = np.concatenate([
             mfcc_feature_vector,
             hist_feature_vector,
-            spectral_centroid,
-            spectral_contrast,
-            pitch_features
+            [spectral_centroid],
+            [spectral_contrast],
+            [pitch_features]
         ])
 
         feature_list.append(feature_vector)
@@ -128,20 +133,23 @@ def compute_features_for_wave_list(wave_list_data):
         class_number = int(filename.split('-')[-1].replace('.wav', ''))
         keys_list.append(class_number)
 
-        # Extract MFCCs
-        mfcc_matrix = extract_mfcc(sound_data, sample_rate)
-        mfcc_mean = np.mean(mfcc_matrix, axis=1)
-        mfcc_std = np.std(mfcc_matrix, axis=1)
-        mfcc_list.append(np.concatenate([mfcc_mean, mfcc_std]))
+        # Step 1: Extract MFCCs and delta MFCCs
+        mfcc_matrix = librosa.feature.mfcc(y=sound_data, sr=sample_rate, n_mfcc=13)
+        delta_mfcc = librosa.feature.delta(mfcc_matrix)
 
-        # Extract histogram features
+        # Compute mean and std of MFCCs and delta MFCCs
+        mfcc_mean = np.mean(mfcc_matrix, axis=1)
+        delta_mfcc_mean = np.mean(delta_mfcc, axis=1)
+        mfcc_list.append(np.concatenate([mfcc_mean, delta_mfcc_mean]))
+
+        # Step 2: Extract histogram features
         hist_list.append(extract_binned_spectrogram_hist(sound_data, sample_rate))
 
-        # Extract spectral features
-        spectral_centroid = extract_spectral_centroid(sound_data, sample_rate)
-        spectral_contrast = extract_spectral_contrast(sound_data, sample_rate)
-        pitch_features = extract_pitch(sound_data, sample_rate)
-        spectral_list.append(np.concatenate([spectral_centroid, spectral_contrast, pitch_features]))
+        # Step 3: Extract spectral features
+        spectral_centroid = np.mean(librosa.feature.spectral_centroid(y=sound_data, sr=sample_rate))
+        spectral_contrast = np.mean(librosa.feature.spectral_contrast(y=sound_data, sr=sample_rate))
+        pitch_features = np.mean(librosa.feature.zero_crossing_rate(y=sound_data))
+        spectral_list.append(np.array([spectral_centroid, spectral_contrast, pitch_features]))
 
     return keys_list, mfcc_list, hist_list, spectral_list
 
