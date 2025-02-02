@@ -89,7 +89,7 @@ def compute_combined_features_for_wave_list(wave_list_data):
 
     for category, filename, sample_rate, sound_data in wave_list_data:
         # Extract class number directly from filename (before .wav)
-        class_number = int(filename.split('-')[1])  # Extracts the class number like '0', '1', etc.
+        class_number = int(filename.split('-')[-1].replace('.wav', ''))
         keys_list.append(class_number)
 
         # Extract features
@@ -125,7 +125,7 @@ def compute_features_for_wave_list(wave_list_data):
 
     for category, filename, sample_rate, sound_data in wave_list_data:
         # Extract class number directly from filename (before .wav)
-        class_number = int(filename.split('-')[1])  # Extracts the class number like '0', '1', etc.
+        class_number = int(filename.split('-')[-1].replace('.wav', ''))
         keys_list.append(class_number)
 
         # Extract MFCCs
