@@ -88,8 +88,9 @@ def compute_combined_features_for_wave_list(wave_list_data):
     feature_list = []
 
     for category, filename, sample_rate, sound_data in wave_list_data:
-        audio_key = f"{category}_{filename}"
-        keys_list.append(audio_key)
+        # Extract class number directly from filename (before .wav)
+        class_number = int(filename.split('-')[1])  # Extracts the class number like '0', '1', etc.
+        keys_list.append(class_number)
 
         # Extract features
         mfcc_matrix = extract_mfcc(sound_data, sample_rate)
@@ -123,8 +124,9 @@ def compute_features_for_wave_list(wave_list_data):
     spectral_list = []
 
     for category, filename, sample_rate, sound_data in wave_list_data:
-        audio_key = f"{category}_{filename}"
-        keys_list.append(audio_key)
+        # Extract class number directly from filename (before .wav)
+        class_number = int(filename.split('-')[1])  # Extracts the class number like '0', '1', etc.
+        keys_list.append(class_number)
 
         # Extract MFCCs
         mfcc_matrix = extract_mfcc(sound_data, sample_rate)
@@ -150,11 +152,3 @@ def save_features_to_npz(keys_list, feature_list, out_file="features.npz"):
     feature_array = np.vstack(feature_list)  
     np.savez(out_file, keys=keys_list, features=feature_array)
     print(f"Features saved to {out_file}")
-
-def save_multiple_features_to_npz(keys_list, mfcc_list, hist_list, spectral_list, out_file="features_multiple.npz"):
-    np.savez(out_file, 
-             keys=keys_list, 
-             mfcc=np.vstack(mfcc_list), 
-             hist=np.vstack(hist_list), 
-             spectral=np.vstack(spectral_list))
-    print(f"Multiple features saved to {out_file}")
