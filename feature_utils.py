@@ -83,15 +83,7 @@ def extract_binned_spectrogram_hist(sound_data, sample_rate,
     
     return np.array(hist_features)
 
-def compute_features_for_wave_list(wave_list_data):
-    """
-    Loop over wave_list_data ([(category, filename, sr, sound_data), ...])
-    and compute all features (MFCC, binned spectrogram hist, and spectral features).
-    
-    Returns:
-        keys_list: list of unique IDs (like "category_filename")
-        feature_list: list of combined feature vectors
-    """
+def compute_combined_features_for_wave_list(wave_list_data):
     keys_list = []
     feature_list = []
 
@@ -123,6 +115,33 @@ def compute_features_for_wave_list(wave_list_data):
         feature_list.append(feature_vector)
 
     return keys_list, feature_list
+
+def compute_features_for_wave_list(wave_list_data):
+    keys_list = []
+    mfcc_list = []
+    hist_list = []
+    spectral_list = []
+
+    for category, filename, sample_rate, sound_data in wave_list_data:
+        audio_key = f"{category}_{filename}"
+        keys_list.append(audio_key)
+
+        # Extract MFCCs
+        mfcc_matrix = extract_mfcc(sound_data, sample_rate)
+        mfcc_mean = np.mean(mfcc_matrix, axis=1)
+        mfcc_std = np.std(mfcc_matrix, axis=1)
+        mfcc_list.append(np.concatenate([mfcc_mean, mfcc_std]))
+
+        # Extract histogram features
+        hist_list.append(extract_binned_spectrogram_hist(sound_data, sample_rate))
+
+        # Extract spectral features
+        spectral_centroid = extract_spectral_centroid(sound_data, sample_rate)
+        spectral_contrast = extract_spectral_contrast(sound_data, sample_rate)
+        pitch_features = extract_pitch(sound_data, sample_rate)
+        spectral_list.append(np.concatenate([spectral_centroid, spectral_contrast, pitch_features]))
+
+    return keys_list, mfcc_list, hist_list, spectral_list
 
 def save_features_to_npz(keys_list, feature_list, out_file="features.npz"):
     """
