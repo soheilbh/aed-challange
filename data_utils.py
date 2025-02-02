@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 from scipy.io import wavfile
+import librosa
 
 def load_metadata(csv_file_path):
     """
@@ -39,6 +40,25 @@ def sample_sounds_by_category(df, categories: dict):
     
     return sampled_sounds
 
+def load_all_sounds(df, categories, audio_files_path):
+    
+    sound_data_list = []
+
+    for category, classes in categories.items():
+        for sound_class in classes:
+            # Filter rows for the specific class
+            class_files = df[df['category'] == sound_class]['filename'].tolist()
+            
+            for filename in class_files:
+                file_path = os.path.join(audio_files_path, filename)
+                try:
+                    # Load the audio file using librosa
+                    sound_data, sample_rate = librosa.load(file_path, sr=None)
+                    sound_data_list.append((category, filename, sample_rate, sound_data))
+                except Exception as e:
+                    print(f"Error loading {file_path}: {e}")
+
+    return sound_data_list
 
 def load_wave_data(sampled_sounds, audio_files_path):
     """
