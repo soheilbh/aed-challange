@@ -150,3 +150,11 @@ def save_features_to_npz(keys_list, feature_list, out_file="features.npz"):
     feature_array = np.vstack(feature_list)  
     np.savez(out_file, keys=keys_list, features=feature_array)
     print(f"Features saved to {out_file}")
+
+def save_multiple_features_to_npz(keys_list, mfcc_list, hist_list, spectral_list, out_file="features_multiple.npz"):
+    np.savez(out_file, 
+             keys=keys_list, 
+             mfcc=np.vstack(mfcc_list), 
+             hist=np.vstack(hist_list), 
+             spectral=np.vstack(spectral_list))
+    print(f"Multiple features saved to {out_file}")
