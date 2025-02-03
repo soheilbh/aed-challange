@@ -38,6 +38,7 @@ def extract_spectral_contrast(sound_data, sample_rate, n_fft=2048, hop_length=51
     contrast_mean = np.mean(contrast, axis=1)
     contrast_std = np.std(contrast, axis=1)
     return np.concatenate([contrast_mean, contrast_std])
+            
 
 def extract_pitch(sound_data, sample_rate, n_fft=2048, hop_length=512):
     """ Extracts pitch feature (Mean & Std) """
