@@ -146,9 +146,11 @@ def compute_features_for_wave_list(wave_list_data):
         hist_list.append(extract_binned_spectrogram_hist(sound_data, sample_rate))
 
         # Step 3: Extract spectral features
-        spectral_centroid = np.mean(librosa.feature.spectral_centroid(y=sound_data, sr=sample_rate))
-        spectral_contrast = np.mean(librosa.feature.spectral_contrast(y=sound_data, sr=sample_rate))
+        spectral_centroid = extract_spectral_centroid(sound_data, sample_rate)
+        spectral_contrast = extract_spectral_contrast(sound_data, sample_rate)
+        
         pitch_features = np.mean(librosa.feature.zero_crossing_rate(y=sound_data))
+        
         spectral_list.append(np.array([spectral_centroid, spectral_contrast, pitch_features]))
 
     return keys_list, mfcc_list, hist_list, spectral_list

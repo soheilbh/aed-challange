@@ -7,6 +7,6 @@ audio
 
 
 datasets
-PCA_ICA/A_challenge_for_Soheil.hdf5
-PCA_ICA/B_challenge_for_Soheil.hdf5
+*.hdf5
+*.npz
 .ipynb_checkpoints/data_utils-checkpoint.py
