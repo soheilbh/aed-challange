@@ -25,10 +25,10 @@ def extract_spectral_centroid(sound_data, sample_rate, n_fft=2048, hop_length=51
     centroid = librosa.feature.spectral_centroid(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
     return np.array([np.mean(centroid), np.std(centroid)])
 
-def extract_spectral_contrast(sound_data, sample_rate, n_fft=2048, hop_length=512):
+def extract_spectral_contrast(sound_data, sample_rate, n_fft=2048, hop_length=512,n_bands=7):
     """ Extracts the spectral contrast feature (Mean & Std for each band) """
     sound_data_float = sound_data.astype(np.float32)
-    contrast = librosa.feature.spectral_contrast(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length)
+    contrast = librosa.feature.spectral_contrast(y=sound_data_float, sr=sample_rate, n_fft=n_fft, hop_length=hop_length,n_bands=n_bands)
     contrast_mean = np.mean(contrast, axis=1)
     contrast_std = np.std(contrast, axis=1)
     return np.concatenate([contrast_mean, contrast_std])
@@ -83,6 +83,7 @@ def extract_binned_spectrogram_hist(sound_data, sample_rate,
     
     return np.array(hist_features)
 
+
 def compute_combined_features_for_wave_list(wave_list_data):
     keys_list = []
     feature_list = []
@@ -104,23 +105,25 @@ def compute_combined_features_for_wave_list(wave_list_data):
         # Step 2: Extract histogram features
         hist_feature_vector = extract_binned_spectrogram_hist(sound_data, sample_rate)
 
-        # Step 3: Extract spectral features
-        spectral_centroid = np.mean(librosa.feature.spectral_centroid(y=sound_data, sr=sample_rate))
-        spectral_contrast = np.mean(librosa.feature.spectral_contrast(y=sound_data, sr=sample_rate))
-        pitch_features = np.mean(librosa.feature.zero_crossing_rate(y=sound_data))
+        # Step 3: Extract spectral features using defined functions
+        spectral_centroid = extract_spectral_centroid(sound_data, sample_rate)
+        spectral_contrast = extract_spectral_contrast(sound_data, sample_rate, n_bands=7)
+        pitch_features = extract_pitch(sound_data, sample_rate)
 
         # Step 4: Combine all features into one vector
         feature_vector = np.concatenate([
             mfcc_feature_vector,
             hist_feature_vector,
-            [spectral_centroid],
-            [spectral_contrast],
-            [pitch_features]
+            spectral_centroid,  # Now includes both mean and std
+            spectral_contrast,  # Now includes all bands' mean and std
+            pitch_features      # Now includes both mean and std
         ])
 
         feature_list.append(feature_vector)
 
     return keys_list, feature_list
+
+
 
 def compute_features_for_wave_list(wave_list_data):
     keys_list = []
@@ -145,15 +148,22 @@ def compute_features_for_wave_list(wave_list_data):
         # Step 2: Extract histogram features
         hist_list.append(extract_binned_spectrogram_hist(sound_data, sample_rate))
 
-        # Step 3: Extract spectral features
-        spectral_centroid = extract_spectral_centroid(sound_data, sample_rate)
-        spectral_contrast = extract_spectral_contrast(sound_data, sample_rate)
-        
-        pitch_features = np.mean(librosa.feature.zero_crossing_rate(y=sound_data))
-        
-        spectral_list.append(np.array([spectral_centroid, spectral_contrast, pitch_features]))
+        # Step 3: Extract spectral features using defined functions
+        spectral_centroid = extract_spectral_centroid(sound_data, sample_rate)  # Shape: (2,)
+        spectral_contrast = extract_spectral_contrast(sound_data, sample_rate, n_bands=7)  # Shape: (2 * n_bands,)
+        pitch_features = extract_pitch(sound_data, sample_rate)  # Shape: (2,)
+
+        # Concatenate all spectral features into a single vector
+        spectral_feature_vector = np.concatenate([
+            spectral_centroid,
+            spectral_contrast,
+            pitch_features
+        ])
+
+        spectral_list.append(spectral_feature_vector)
 
     return keys_list, mfcc_list, hist_list, spectral_list
+
 
 def save_features_to_npz(keys_list, feature_list, out_file="features.npz"):
     """
