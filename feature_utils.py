@@ -83,6 +83,40 @@ def extract_binned_spectrogram_hist(sound_data, sample_rate,
     
     return np.array(hist_features)
 
+def extract_zcr(sound_data, sample_rate, frame_length=2048, hop_length=512):
+
+    zcr = librosa.feature.zero_crossing_rate(y=sound_data, frame_length=frame_length, hop_length=hop_length)
+    mean_zcr = np.mean(zcr)
+    std_zcr = np.std(zcr)
+    return np.array([mean_zcr, std_zcr])
+
+def extract_amplitude_envelope_features(sound_data, sample_rate, frame_length=2048, hop_length=512):
+
+    rms_energy = librosa.feature.rms(y=sound_data, frame_length=frame_length, hop_length=hop_length)[0]
+    
+    # Energy statistics
+    mean_energy = np.mean(rms_energy)
+    max_energy = np.max(rms_energy)
+    energy_variance = np.var(rms_energy)
+    
+    # Attack and decay rates (differences in rising/falling energy)
+    attack_rate = np.mean(np.diff(rms_energy[rms_energy > 0]))
+    decay_rate = np.mean(np.diff(rms_energy[rms_energy > 0]) * -1)
+    
+    return np.array([mean_energy, max_energy, energy_variance, attack_rate, decay_rate])
+
+def compute_harmonic_to_noise_ratio(sound_data, sample_rate, n_fft=2048, hop_length=512):
+
+    # Harmonic-percussive separation
+    harmonic, percussive = librosa.effects.hpss(sound_data)
+    
+    # Compute energy of harmonic and percussive parts
+    harmonic_energy = np.sum(harmonic ** 2)
+    percussive_energy = np.sum(percussive ** 2)
+    
+    # Compute HNR
+    hnr = harmonic_energy / (percussive_energy + 1e-9)  # Small value to avoid division by zero
+    return np.array([hnr])
 
 def compute_combined_features_for_wave_list(wave_list_data):
     keys_list = []
@@ -110,13 +144,21 @@ def compute_combined_features_for_wave_list(wave_list_data):
         spectral_contrast = extract_spectral_contrast(sound_data, sample_rate, n_bands=7)
         pitch_features = extract_pitch(sound_data, sample_rate)
 
-        # Step 4: Combine all features into one vector
+        # Step 4: Extract ZCR, Amplitude Envelope, and HNR features
+        zcr_features = extract_zcr(sound_data, sample_rate)  # [mean ZCR, std ZCR]
+        envelope_features = extract_amplitude_envelope_features(sound_data, sample_rate)  # [mean, max, variance, attack, decay]
+        hnr_features = compute_harmonic_to_noise_ratio(sound_data, sample_rate)  # [HNR]
+
+        # Step 5: Combine all features into one vector
         feature_vector = np.concatenate([
             mfcc_feature_vector,
             hist_feature_vector,
-            spectral_centroid,  # Now includes both mean and std
-            spectral_contrast,  # Now includes all bands' mean and std
-            pitch_features      # Now includes both mean and std
+            spectral_centroid,     # Spectral centroid (mean, std)
+            spectral_contrast,     # Spectral contrast features
+            pitch_features,        # Pitch features (mean, std)
+            zcr_features,          # Zero-Crossing Rate features
+            envelope_features,     # Amplitude envelope features
+            hnr_features           # Harmonic-to-Noise Ratio
         ])
 
         feature_list.append(feature_vector)
@@ -130,6 +172,9 @@ def compute_features_for_wave_list(wave_list_data):
     mfcc_list = []
     hist_list = []
     spectral_list = []
+    zcr_list = []
+    envelope_list = []
+    hnr_list = []
 
     for category, filename, sample_rate, sound_data in wave_list_data:
         # Extract class number directly from filename (before .wav)
@@ -162,7 +207,19 @@ def compute_features_for_wave_list(wave_list_data):
 
         spectral_list.append(spectral_feature_vector)
 
-    return keys_list, mfcc_list, hist_list, spectral_list
+        # Step 4: Zero-Crossing Rate (ZCR)
+        zcr_features = extract_zcr(sound_data, sample_rate)
+        zcr_list.append(zcr_features)
+
+        # Step 5: Amplitude Envelope (Energy Features)
+        envelope_features = extract_amplitude_envelope_features(sound_data, sample_rate)
+        envelope_list.append(envelope_features)
+
+        # Step 6: Harmonic-to-Noise Ratio (HNR)
+        hnr_features = compute_harmonic_to_noise_ratio(sound_data, sample_rate)
+        hnr_list.append(hnr_features)
+
+    return keys_list, mfcc_list, hist_list, spectral_list, zcr_list, envelope_list, hnr_list
 
 
 def save_features_to_npz(keys_list, feature_list, out_file="features.npz"):
