@@ -1,5 +1,11 @@
 import numpy as np
 import librosa
+import itertools
+from sklearn.svm import SVC
+from sklearn.metrics import roc_auc_score, accuracy_score
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 
 def extract_mfcc(sound_data, sample_rate, n_mfcc=13, n_fft=2048, hop_length=512):
     """
@@ -268,3 +274,75 @@ def combine_features_with_flags(loaded_data, feature_flags):
     # Horizontally stack the selected feature arrays
     combined_features = np.hstack(feature_arrays)
     return combined_features
+
+# Function to test different feature combinations with optional normalization and PCA
+def test_feature_combinations_svm(combinations_dict, y, n_splits=5, n_pca_components=10, normalize=True, apply_pca=True):
+    results = []
+    
+    # Generate all possible non-empty combinations of features
+    all_combinations = []
+    feature_keys = list(combinations_dict.keys())
+    for i in range(1, len(feature_keys) + 1):
+        all_combinations.extend(itertools.combinations(feature_keys, i))
+    
+    for combination in all_combinations:
+        # Combine selected features
+        selected_features = np.hstack([combinations_dict[feature] for feature in combination])
+        
+        # Step 1: Normalize features if enabled
+        if normalize:
+            scaler = StandardScaler()
+            selected_features = scaler.fit_transform(selected_features)
+            print(f"Applied normalization for combination: {combination}")
+        
+        # Step 2: Apply PCA if enabled and feature dimension is high enough
+        if apply_pca and selected_features.shape[1] > n_pca_components:
+            pca = PCA(n_components=n_pca_components)
+            selected_features = pca.fit_transform(selected_features)
+            print(f"Applied PCA: Reduced to {n_pca_components} components for combination {combination}")
+        
+        # Step 3: Split the data
+        X_train, X_test, y_train, y_test = train_test_split(
+            selected_features, y, test_size=0.2, random_state=42, stratify=y
+        )
+
+        # Train and evaluate using Stratified K-Fold Cross-Validation
+        kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+        auc_scores = []
+        accuracy_scores = []
+
+        for train_idx, val_idx in kfold.split(X_train, y_train):
+            X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
+            y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
+
+            # Train SVM
+            svm = SVC(kernel='rbf', C=10, gamma='scale', probability=True, random_state=42)
+            svm.fit(X_train_fold, y_train_fold)
+
+            # Make predictions
+            y_val_pred = svm.predict(X_val_fold)
+            y_val_prob = svm.predict_proba(X_val_fold)
+
+            # Calculate AUC and accuracy
+            auc_score = roc_auc_score(y_val_fold, y_val_prob, multi_class='ovr')
+            accuracy = accuracy_score(y_val_fold, y_val_pred)
+
+            auc_scores.append(auc_score)
+            accuracy_scores.append(accuracy)
+
+        # Average AUC and accuracy over folds
+        avg_auc = np.mean(auc_scores)
+        avg_accuracy = np.mean(accuracy_scores)
+        
+        # Store the results
+        results.append({
+            'combination': combination,
+            'average_auc': avg_auc,
+            'average_accuracy': avg_accuracy
+        })
+        print(f"Tested combination: {combination}, AUC = {avg_auc:.4f}, Accuracy = {avg_accuracy:.4f}")
+
+    # Sort results by AUC in descending order
+    results.sort(key=lambda x: x['average_auc'], reverse=True)
+
+    return results
