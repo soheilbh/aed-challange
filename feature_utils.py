@@ -242,3 +242,29 @@ def save_multiple_features_to_npz(keys_list, mfcc_list, hist_list, spectral_list
              hnr=np.vstack(hnr_list))
     
     print(f"Multiple features saved to {out_file}")
+
+def combine_features_with_flags(loaded_data, feature_flags):
+    
+    feature_arrays = []
+
+    # Map feature names to the arrays in loaded_data
+    feature_map = {
+        'mfcc': loaded_data['mfcc'],
+        'hist': loaded_data['hist'],
+        'spectral': loaded_data['spectral'],
+        'zcr': loaded_data['zcr'],
+        'envelope': loaded_data['envelope'],
+        'hnr': loaded_data['hnr']
+    }
+
+    # Loop through feature flags and select features with True flag
+    for feature, include in feature_flags.items():
+        if include:
+            if feature in feature_map:
+                feature_arrays.append(feature_map[feature])
+            else:
+                print(f"Warning: {feature} is not available in the loaded data.")
+
+    # Horizontally stack the selected feature arrays
+    combined_features = np.hstack(feature_arrays)
+    return combined_features
