@@ -28,9 +28,7 @@ This repository contains our **Acoustic Event Detection Challenge** project, par
    - [Amir's Notebook](#amirs-notebook)
    - [Mina's Notebook](#minas-notebook)
    - [Soheil's Notebook](#soheils-notebook)
-7. [Usage](#usage)
-8. [License](#license)
-9. [Team & Contributions](#team--contributions)
+7. [Team & Contributions](#team--contributions)
 
 ---
 
