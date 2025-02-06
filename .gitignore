@@ -1,20 +1,18 @@
 esc50.csv
 
 audio
-.ipynb_checkpoints/main-checkpoint.ipynb
+
 /ESC-50-master
+
 .DS_Store
 
-
 datasets
+
 *.hdf5
 *.npz
 .ipynb_checkpoints/data_utils-checkpoint.py
-__pycache__/data_utils.cpython-312.pyc
 .ipynb_checkpoints/feature_utils-checkpoint.py
-__pycache__/feature_utils.cpython-312.pyc
-__pycache__/data_utils.cpython-312.pyc
-__pycache__/data_utils.cpython-312.pyc
+.ipynb_checkpoints/main-checkpoint.ipynb
 
 
 # Byte-compiled / optimized / DLL files
@@ -43,15 +41,6 @@ var/
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
-.tox/
-.coverage
-.cache
-nosetests.xml
-coverage.xml
-
-# Translations
-*.mo
 
 # Mr Developer
 .mr.developer.cfg
@@ -61,9 +50,6 @@ coverage.xml
 # Rope
 .ropeproject
 
-# Django stuff:
-*.log
-*.pot
 
 # Sphinx documentation
 docs/_build/
