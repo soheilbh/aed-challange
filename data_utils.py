@@ -1,8 +1,11 @@
-import os
 import pandas as pd
-import numpy as np
 from scipy.io import wavfile
 import librosa
+import os
+import yaml
+
+
+
 
 def load_metadata(csv_file_path):
     """
@@ -88,3 +91,22 @@ def group_data_by_category(wave_list_data):
             category_groups[category] = []
         category_groups[category].append((category, filename, sample_rate, sound_data))
     return category_groups
+
+def load_paths_from_config(config_file='config.yml'):
+
+    try:
+        with open(config_file, 'r') as file:
+            config = yaml.safe_load(file)
+            paths = config.get('paths', {})
+            csv_file_path = paths.get('csv_file_path')
+            audio_files_path = paths.get('audio_files_path')
+
+            if csv_file_path is None or audio_files_path is None:
+                raise ValueError("Missing required path(s) in the config file.")
+
+            return csv_file_path, audio_files_path
+
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Configuration file '{config_file}' not found.")
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Error parsing YAML file: {exc}")

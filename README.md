@@ -67,9 +67,10 @@ Below is a concise outline of the tasks:
 
 1. **Read in only the .wav files you want**
    - From **10 classes** (2 classes from each of the 5 categories in ESC-50).
-   - Use **pandas** or any filtering strategy (e.g., look for a specific end-number) to get the desired files.
 2. **Visualize an instance of each class**
    - For example, plot a **spectrogram** or **spectrum** to get an overview of the data.
+
+- **File**: [Data Visualizations](Data_Visualization.ipynb)
 
 ### 2. Extracting Features (Individually Graded)
 
