@@ -209,4 +209,4 @@ Each member contributed to feature extraction, PCA/ICA analysis, and the overall
 
 ---
 
-<p align="center"> Crafted with ❤ by Mina, Soheil & Amir </p>
+<p align="center"> Crafted by Mina, Soheil & Amir </p>
