@@ -1,0 +1,3 @@
+paths:
+  csv_file_path: 'datasets/ESC-50-master/meta/esc50.csv'
+  audio_files_path: 'datasets/ESC-50-master/audio/'

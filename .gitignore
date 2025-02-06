@@ -1,3 +1,55 @@
-
-
 esc50.csv
+
+audio
+
+/ESC-50-master
+
+.DS_Store
+
+datasets
+
+*.hdf5
+*.npz
+.ipynb_checkpoints/data_utils-checkpoint.py
+.ipynb_checkpoints/feature_utils-checkpoint.py
+.ipynb_checkpoints/main-checkpoint.ipynb
+
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# C extensions
+*.so
+
+# Distribution / packaging
+bin/
+build/
+develop-eggs/
+dist/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+
+# Mr Developer
+.mr.developer.cfg
+.project
+.pydevproject
+
+# Rope
+.ropeproject
+
+
+# Sphinx documentation
+docs/_build/
