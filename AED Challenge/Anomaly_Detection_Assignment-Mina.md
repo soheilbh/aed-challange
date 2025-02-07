@@ -25,16 +25,16 @@ For the "Patient Singing at 2 AM":
 
 **Seizure detection from pressure sensors under the bed.**: 
 - If we consider that the pattern of seizures on the pressure sensors has been labeled (medical data is often labeled), classification would yield much better results compared to other methods. Classification is used to learn a model (classifier) from a set of labeled data instances (training) and then classify a test instance into one of the classes using the learned model."
-- For unlabeled data, the Clustering technique would be my choice since it can handle data consisting of multiple normal patterns and works under the assumption that "Normal data instances belong to large and dense clusters, while anomalies either belong to small or sparse clusters. However, clustering would not work as well as classification due to the large variation within the same class of data (in this case, seizure events). 
-- Spectral techniques seem inappropriate due to the lack of a unique pattern in pressure sensor data for normal and abnormal cases, making separation challenging in a reduced-dimensional space.
-- Nearest Neighbor methods can be highly sensitive to noise and irrelevant features, leading to false positives and reduced accuracy in noisy datasets. Pressure sensor data naturally contains fluctuations due to movements unrelated to seizures, and Nearest Neighbor techniques may mistakenly classify these normal movements as seizures, leading to false alarms
+- For unlabeled data, the Clustering technique would be my choice since it can handle data consisting of multiple normal patterns and works under the assumption that "Normal data instances belong to large and dense clusters, while anomalies either belong to small or sparse clusters. However, clustering would not work properly as classification did, since there is large differences in the same class of data (in this case, seizure events). 
+- Spectral technique seems inappropriate since there is not a unique pattern in the pressure sensor data for normal and abnormal cases, which makes the separation more challenging in a reduced-dimensional space.
+- Nearest Neighbor method is not robust to the noise and irrelevant features, leading low accuracy in noisy datasets. Pressure sensor data naturally contains fluctuations due to movements unrelated to seizures, and Nearest Neighbor techniques may mistakenly classify these normal movements as seizures, leading to false alarms
 
 
 **Car or bike ball bearing monitoring through acceleration sensors**:
-- Spectral techniques automatically perform dimensionality reduction based on data embedded into a lower-dimensional subspace, and vibration data is high-dimensional, in which normal instances and anomalies appear significantly different. Thus, it would be my preferred choice for car or bike ball bearing monitoring through acceleration sensors.
-- Since vibration data has a high-dimensional nature, Nearest Neighbor would be ineffective. 
-- Clustering may not yield appropriate results since minor anomalies can still be assigned to normal clusters if large clusters are considered (one of the major disadvantages of clustering). 
-- Classification, on the other hand, requires labeled data, which might not always be available, and preparing it could be very challenging and expensive.
+- Spectral techniques automatically perform dimensionality reduction based on data embedded into a lower-dimensional subspace, and vibration data is high-dimensional, in which normal instances and anomalies appear significantly different. Thus, it would be my choice for car or bike ball bearing monitoring through acceleration sensors.
+- The computational complexity of the testing phase in Nearest Neighbor technique is also a significant challenge since it involves computing the distance of each test instance—with all instances belonging to either the test data itself, or to the training data—to compute the nearest neighbors being one of the big disadvantages of this method.
+- Clustering would show inappropriate results since minor anomalies still can be assigned to normal clusters if large clusters are considered (one of the major disadvantages of clustering). 
+- Classification, on the other hand, requires labeled data, which might not always be available, and preparing it could be very challenging and costly.
 
 
  You need to speculate a bit about system behavior to make this work. In a real world assignment you would have to base your decision on thorough analysis of system behavior. Here you can work with what seem reasonable assumptions, you have to however make the assumptions underlying your reasoning explicit in your answer.
