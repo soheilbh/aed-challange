@@ -1,8 +1,10 @@
 import numpy as np
 import librosa
 import itertools
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.svm import SVC
-from sklearn.metrics import roc_auc_score, accuracy_score
+from sklearn.metrics import accuracy_score, roc_auc_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -470,3 +472,240 @@ def test_feature_combinations_rf(combinations_dict, y, use_gridsearch=False, rf_
     non_overfitted_results.sort(key=lambda x: x['combined_score'], reverse=True)
 
     return non_overfitted_results
+
+def svm_kfold_cross_validation(features, labels, selected_features_names, n_splits=5, n_pca_components=10, 
+                               normalize=False, apply_pca=False, svm_params=None, overfit_threshold=0.1):
+    # Default SVM parameters if not provided
+    if svm_params is None:
+        svm_params = {'kernel': 'rbf', 'C': 10, 'gamma': 'scale', 'probability': True, 'random_state': 42}
+    
+    # Track settings
+    normalization_status = "Enabled" if normalize else "Disabled"
+    pca_status = f"Enabled (n_components={n_pca_components})" if apply_pca else "Disabled"
+
+    print(f"\nSettings:")
+    print(f" - Selected Features: {', '.join(selected_features_names)}")
+    print(f" - Normalization: {normalization_status}")
+    print(f" - PCA: {pca_status}")
+    print(f" - SVM Parameters: {svm_params}\n")
+
+    # Initialize K-Fold Cross-Validation
+    kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+    train_accuracies = []
+    test_accuracies = []
+    auc_scores = []
+    conf_matrices = []
+
+    for train_idx, test_idx in kfold.split(features, labels):
+        X_train, X_test = features[train_idx], features[test_idx]
+        y_train, y_test = labels[train_idx], labels[test_idx]
+
+        # Step 1: Normalize if enabled
+        if normalize:
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_test = scaler.transform(X_test)
+
+        # Step 2: Apply PCA if enabled
+        if apply_pca:
+            pca = PCA(n_components=n_pca_components)
+            X_train = pca.fit_transform(X_train)
+            X_test = pca.transform(X_test)
+
+        # Step 3: Train the SVM classifier
+        svm = SVC(**svm_params)
+        svm.fit(X_train, y_train)
+
+        # Step 4: Evaluate on training set
+        y_train_pred = svm.predict(X_train)
+        train_accuracy = accuracy_score(y_train, y_train_pred)
+        train_accuracies.append(train_accuracy)
+
+        # Step 5: Evaluate on test set
+        y_test_pred = svm.predict(X_test)
+        y_test_prob = svm.predict_proba(X_test)
+        test_accuracy = accuracy_score(y_test, y_test_pred)
+        test_accuracies.append(test_accuracy)
+
+        # Compute AUC score
+        auc = roc_auc_score(y_test, y_test_prob, multi_class='ovr')
+        auc_scores.append(auc)
+
+        # Save confusion matrix for this fold
+        conf_matrices.append(confusion_matrix(y_test, y_test_pred))
+
+    # Step 6: Calculate average metrics
+    avg_train_accuracy = np.mean(train_accuracies)
+    avg_test_accuracy = np.mean(test_accuracies)
+    avg_auc = np.mean(auc_scores)
+
+    print(f"\nK-Fold Cross-Validation Summary:")
+    print(f"Average Train Accuracy: {avg_train_accuracy:.4f}")
+    print(f"Average Test Accuracy: {avg_test_accuracy:.4f}")
+    print(f"Average AUC: {avg_auc:.4f}")
+
+    # Overfitting detection
+    overfitting_gap = avg_train_accuracy - avg_test_accuracy
+    overfitting_status = "⚠️ Overfitting Risk" if avg_train_accuracy == 1.0 or overfitting_gap > overfit_threshold else "✅ No Overfitting"
+    print(f"Overfitting Status: {overfitting_status} (Train-Test Gap: {overfitting_gap:.4f})")
+
+    # --- Plotting Cross-Validation Results ---
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+    # Boxplot of train and test accuracies across folds
+    axes[0].boxplot([train_accuracies, test_accuracies], labels=["Train Accuracy", "Test Accuracy"], patch_artist=True,
+                    boxprops=dict(facecolor="skyblue", color="black"), medianprops=dict(color="red"))
+    axes[0].set_title("Accuracy per Fold")
+    axes[0].set_ylabel("Accuracy")
+
+    # Boxplot of AUC scores
+    axes[1].boxplot(auc_scores, labels=["AUC"], patch_artist=True,
+                    boxprops=dict(facecolor="lightgreen", color="black"), medianprops=dict(color="red"))
+    axes[1].set_title("AUC per Fold")
+    axes[1].set_ylabel("AUC Score")
+
+    plt.tight_layout()
+    plt.show()
+
+    # --- Confusion Matrix on Last Fold ---
+    print("\nSVM - Classification Report (Last Fold):")
+    print(classification_report(y_test, y_test_pred))
+
+    # Confusion matrix visualization for the last fold
+    plt.figure(figsize=(14, 6))
+    sns.heatmap(conf_matrices[-1], annot=True, fmt='d', cmap='Blues', xticklabels=np.unique(labels), yticklabels=np.unique(labels))
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title('SVM - Confusion Matrix (Last Fold)')
+    plt.show()
+
+    # Return key metrics for further analysis
+    return {
+        'avg_train_accuracy': avg_train_accuracy,
+        'avg_test_accuracy': avg_test_accuracy,
+        'avg_auc': avg_auc,
+        'overfitting_status': overfitting_status,
+        'overfitting_gap': overfitting_gap
+    }
+
+def rf_kfold_cross_validation(features, labels, selected_features_names, n_splits=5, n_pca_components=10, 
+                              normalize=False, apply_pca=False, rf_params=None, overfit_threshold=0.1):
+    # Default RF parameters if not provided
+    if rf_params is None:
+        rf_params = {'n_estimators': 100, 'max_depth': 10, 'min_samples_split': 5, 'random_state': 42}
+    
+    # Track settings
+    normalization_status = "Enabled" if normalize else "Disabled"
+    pca_status = f"Enabled (n_components={n_pca_components})" if apply_pca else "Disabled"
+
+    print(f"\nSettings:")
+    print(f" - Selected Features: {', '.join(selected_features_names)}")
+    print(f" - Normalization: {normalization_status}")
+    print(f" - PCA: {pca_status}")
+    print(f" - Random Forest Parameters: {rf_params}\n")
+
+    # Initialize K-Fold Cross-Validation
+    kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+    train_accuracies = []
+    test_accuracies = []
+    auc_scores = []
+    conf_matrices = []
+
+    for train_idx, test_idx in kfold.split(features, labels):
+        X_train, X_test = features[train_idx], features[test_idx]
+        y_train, y_test = labels[train_idx], labels[test_idx]
+
+        # Step 1: Normalize if enabled
+        if normalize:
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_test = scaler.transform(X_test)
+
+        # Step 2: Apply PCA if enabled
+        if apply_pca:
+            pca = PCA(n_components=n_pca_components)
+            X_train = pca.fit_transform(X_train)
+            X_test = pca.transform(X_test)
+
+        # Step 3: Train the Random Forest classifier
+        rf = RandomForestClassifier(**rf_params)
+        rf.fit(X_train, y_train)
+
+        # Step 4: Evaluate on training set
+        y_train_pred = rf.predict(X_train)
+        train_accuracy = accuracy_score(y_train, y_train_pred)
+        train_accuracies.append(train_accuracy)
+
+        # Step 5: Evaluate on test set
+        y_test_pred = rf.predict(X_test)
+        y_test_prob = rf.predict_proba(X_test)
+        test_accuracy = accuracy_score(y_test, y_test_pred)
+        test_accuracies.append(test_accuracy)
+
+        # Compute AUC score
+        auc = roc_auc_score(y_test, y_test_prob, multi_class='ovr')
+        auc_scores.append(auc)
+
+        # Save confusion matrix for this fold
+        conf_matrices.append(confusion_matrix(y_test, y_test_pred))
+
+    # Step 6: Calculate average metrics
+    avg_train_accuracy = np.mean(train_accuracies)
+    avg_test_accuracy = np.mean(test_accuracies)
+    avg_auc = np.mean(auc_scores)
+
+    print(f"\nK-Fold Cross-Validation Summary:")
+    print(f"Average Train Accuracy: {avg_train_accuracy:.4f}")
+    print(f"Average Test Accuracy: {avg_test_accuracy:.4f}")
+    print(f"Average AUC: {avg_auc:.4f}")
+
+    # Overfitting detection
+    overfitting_gap = avg_train_accuracy - avg_test_accuracy
+    overfitting_status = "⚠️ Overfitting Risk" if avg_train_accuracy == 1.0 or overfitting_gap > overfit_threshold else "✅ No Overfitting"
+    print(f"Overfitting Status: {overfitting_status} (Train-Test Gap: {overfitting_gap:.4f})")
+
+    # --- Plotting Cross-Validation Results ---
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+    # Boxplot of train and test accuracies across folds
+    axes[0].boxplot([train_accuracies, test_accuracies], labels=["Train Accuracy", "Test Accuracy"], patch_artist=True,
+                    boxprops=dict(facecolor="skyblue", color="black"), medianprops=dict(color="red"))
+    axes[0].set_title("Accuracy per Fold")
+    axes[0].set_ylabel("Accuracy")
+
+    # Boxplot of AUC scores
+    axes[1].boxplot(auc_scores, labels=["AUC"], patch_artist=True,
+                    boxprops=dict(facecolor="lightgreen", color="black"), medianprops=dict(color="red"))
+    axes[1].set_title("AUC per Fold")
+    axes[1].set_ylabel("AUC Score")
+
+    plt.tight_layout()
+    plt.show()
+
+    # --- Confusion Matrix on Last Fold ---
+    print("\nRandom Forest - Classification Report (Last Fold):")
+    print(classification_report(y_test, y_test_pred))
+
+    # Confusion matrix visualization for the last fold
+    plt.figure(figsize=(14, 6))
+    sns.heatmap(conf_matrices[-1], annot=True, fmt='d', cmap='Blues', xticklabels=np.unique(labels), yticklabels=np.unique(labels))
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title('Random Forest - Confusion Matrix (Last Fold)')
+    plt.show()
+
+    # Return key metrics for further analysis
+    return {
+        'avg_train_accuracy': avg_train_accuracy,
+        'avg_test_accuracy': avg_test_accuracy,
+        'avg_auc': avg_auc,
+        'overfitting_status': overfitting_status,
+        'overfitting_gap': overfitting_gap
+    }
+
+def get_selected_features(feature_combinations, feature_selection):
+    selected_features_combination = [feat for feat, selected in feature_selection.items() if selected]
+    selected_features = np.hstack([feature_combinations[feat] for feat in selected_features_combination])
+    return selected_features, selected_features_combination
