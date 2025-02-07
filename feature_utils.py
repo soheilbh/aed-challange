@@ -3,9 +3,10 @@ import librosa
 import itertools
 from sklearn.svm import SVC
 from sklearn.metrics import roc_auc_score, accuracy_score
-from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestClassifier
 
 def extract_mfcc(sound_data, sample_rate, n_mfcc=13, n_fft=2048, hop_length=512):
     """
@@ -277,73 +278,195 @@ def combine_features_with_flags(loaded_data, feature_flags):
     return combined_features
 
 # Function to test different feature combinations with optional normalization and PCA
-def test_feature_combinations_svm(combinations_dict, y, n_splits=5, n_pca_components=10, normalize=True, apply_pca=True):
+def test_feature_combinations_svm(combinations_dict, y, use_gridsearch=False, svm_params=None,
+                                  n_splits=5, n_pca_components=10, normalize=True, apply_pca=True, 
+                                  overfit_threshold=0.1, hyperparameter_grid=None):
     results = []
-    
+
+    # Default SVM parameters if not provided
+    if svm_params is None:
+        svm_params = {'kernel': 'rbf', 'C': 10, 'gamma': 'scale', 'probability': True, 'random_state': 42}
+
+    # Default hyperparameter grid if not provided
+    if hyperparameter_grid is None:
+        hyperparameter_grid = {'C': [0.1, 1, 10], 'gamma': ['scale'], 'kernel': ['rbf']}
+
     # Generate all possible non-empty combinations of features
-    all_combinations = []
-    feature_keys = list(combinations_dict.keys())
-    for i in range(1, len(feature_keys) + 1):
-        all_combinations.extend(itertools.combinations(feature_keys, i))
-    
+    all_combinations = [comb for i in range(1, len(combinations_dict) + 1) for comb in itertools.combinations(combinations_dict.keys(), i)]
+
     for combination in all_combinations:
         # Combine selected features
         selected_features = np.hstack([combinations_dict[feature] for feature in combination])
-        
+
         # Step 1: Normalize features if enabled
         if normalize:
             scaler = StandardScaler()
             selected_features = scaler.fit_transform(selected_features)
-            print(f"Applied normalization for combination: {combination}")
-        
+
         # Step 2: Apply PCA if enabled and feature dimension is high enough
         if apply_pca and selected_features.shape[1] > n_pca_components:
             pca = PCA(n_components=n_pca_components)
             selected_features = pca.fit_transform(selected_features)
-            print(f"Applied PCA: Reduced to {n_pca_components} components for combination {combination}")
-        
-        # Step 3: Split the data
-        X_train, X_test, y_train, y_test = train_test_split(
-            selected_features, y, test_size=0.2, random_state=42, stratify=y
-        )
 
-        # Train and evaluate using Stratified K-Fold Cross-Validation
+        # Step 3: Train-test split
+        X_train, X_test, y_train, y_test = train_test_split(selected_features, y, test_size=0.2, random_state=42, stratify=y)
+
+        # Option to use fixed hyperparameters or GridSearchCV
+        if use_gridsearch:
+            kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+            grid_search = GridSearchCV(SVC(probability=True), hyperparameter_grid, scoring='roc_auc_ovr', cv=kfold, n_jobs=-1, verbose=0)
+            grid_search.fit(X_train, y_train)
+            best_params = grid_search.best_params_
+        else:
+            best_params = svm_params  # Use provided or default SVM parameters for testing
+
+        # Step 4: Train and evaluate using K-Fold
+        train_accuracies, val_accuracies, auc_scores = [], [], []
         kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-        auc_scores = []
-        accuracy_scores = []
-
         for train_idx, val_idx in kfold.split(X_train, y_train):
             X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
             y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
 
-            # Train SVM
-            svm = SVC(kernel='rbf', C=10, gamma='scale', probability=True, random_state=42)
+            svm = SVC(**best_params)
             svm.fit(X_train_fold, y_train_fold)
 
-            # Make predictions
-            y_val_pred = svm.predict(X_val_fold)
+            # Training and validation accuracy
+            train_acc = accuracy_score(y_train_fold, svm.predict(X_train_fold))
+            val_acc = accuracy_score(y_val_fold, svm.predict(X_val_fold))
+
+            # AUC score
             y_val_prob = svm.predict_proba(X_val_fold)
-
-            # Calculate AUC and accuracy
             auc_score = roc_auc_score(y_val_fold, y_val_prob, multi_class='ovr')
-            accuracy = accuracy_score(y_val_fold, y_val_pred)
 
+            train_accuracies.append(train_acc)
+            val_accuracies.append(val_acc)
             auc_scores.append(auc_score)
-            accuracy_scores.append(accuracy)
 
-        # Average AUC and accuracy over folds
+        # Calculate averages
+        avg_train_accuracy = np.mean(train_accuracies)
+        avg_val_accuracy = np.mean(val_accuracies)
         avg_auc = np.mean(auc_scores)
-        avg_accuracy = np.mean(accuracy_scores)
-        
-        # Store the results
+
+        # Overfitting detection
+        overfitting = avg_train_accuracy - avg_val_accuracy
+        overfitting_status = "⚠️ Overfitting Risk" if avg_train_accuracy == 1.0 or overfitting > overfit_threshold else "✅ No Overfitting"
+
+        # Calculate a balanced score using normalized AUC and accuracy
+        combined_score = 0.5 * (avg_auc / 1.0 + avg_val_accuracy / 1.0)
+
+        # Store results
         results.append({
             'combination': combination,
             'average_auc': avg_auc,
-            'average_accuracy': avg_accuracy
+            'average_train_accuracy': avg_train_accuracy,
+            'average_val_accuracy': avg_val_accuracy,
+            'overfitting_status': overfitting_status,
+            'combined_score': combined_score,
+            'best_params': best_params
         })
-        print(f"Tested combination: {combination}, AUC = {avg_auc:.4f}, Accuracy = {avg_accuracy:.4f}")
+        print(f"Tested {combination}: AUC={avg_auc:.4f}, Train Acc={avg_train_accuracy:.4f}, Val Acc={avg_val_accuracy:.4f}, Overfitting={overfitting_status}")
 
-    # Sort results by AUC in descending order
-    results.sort(key=lambda x: x['average_auc'], reverse=True)
+    # Filter non-overfitted combinations and sort by combined score
+    non_overfitted_results = [res for res in results if res['overfitting_status'] == "✅ No Overfitting"]
+    non_overfitted_results.sort(key=lambda x: x['combined_score'], reverse=True)
 
-    return results
+    return non_overfitted_results
+
+# Function to test different feature combinations with optional normalization and PCA using Random Forest
+def test_feature_combinations_rf(combinations_dict, y, use_gridsearch=False, rf_params=None,
+                                 n_splits=5, n_pca_components=10, normalize=True, apply_pca=True, 
+                                 overfit_threshold=0.1, hyperparameter_grid=None):
+    results = []
+
+    # Default Random Forest parameters if not provided
+    if rf_params is None:
+        rf_params = {'n_estimators': 100, 'max_depth': None, 'random_state': 42}
+
+    # Default hyperparameter grid if not provided
+    if hyperparameter_grid is None:
+        hyperparameter_grid = {
+            'n_estimators': [50, 100, 150],
+            'max_depth': [None, 10, 20],
+            'min_samples_split': [2, 5, 10]
+        }
+
+    # Generate all possible non-empty combinations of features
+    all_combinations = [comb for i in range(1, len(combinations_dict) + 1) for comb in itertools.combinations(combinations_dict.keys(), i)]
+
+    for combination in all_combinations:
+        # Combine selected features
+        selected_features = np.hstack([combinations_dict[feature] for feature in combination])
+
+        # Step 1: Normalize features if enabled
+        if normalize:
+            scaler = StandardScaler()
+            selected_features = scaler.fit_transform(selected_features)
+
+        # Step 2: Apply PCA if enabled and feature dimension is high enough
+        if apply_pca and selected_features.shape[1] > n_pca_components:
+            pca = PCA(n_components=n_pca_components)
+            selected_features = pca.fit_transform(selected_features)
+
+        # Step 3: Train-test split
+        X_train, X_test, y_train, y_test = train_test_split(selected_features, y, test_size=0.2, random_state=42, stratify=y)
+
+        # Option to use fixed hyperparameters or GridSearchCV
+        if use_gridsearch:
+            kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+            grid_search = GridSearchCV(RandomForestClassifier(), hyperparameter_grid, scoring='roc_auc_ovr', cv=kfold, n_jobs=-1, verbose=0)
+            grid_search.fit(X_train, y_train)
+            best_params = grid_search.best_params_
+        else:
+            best_params = rf_params  # Use provided or default Random Forest parameters for testing
+
+        # Step 4: Train and evaluate using K-Fold
+        train_accuracies, val_accuracies, auc_scores = [], [], []
+        kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+        for train_idx, val_idx in kfold.split(X_train, y_train):
+            X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
+            y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
+
+            rf = RandomForestClassifier(**best_params)
+            rf.fit(X_train_fold, y_train_fold)
+
+            # Training and validation accuracy
+            train_acc = accuracy_score(y_train_fold, rf.predict(X_train_fold))
+            val_acc = accuracy_score(y_val_fold, rf.predict(X_val_fold))
+
+            # AUC score
+            y_val_prob = rf.predict_proba(X_val_fold)
+            auc_score = roc_auc_score(y_val_fold, y_val_prob, multi_class='ovr')
+
+            train_accuracies.append(train_acc)
+            val_accuracies.append(val_acc)
+            auc_scores.append(auc_score)
+
+        # Calculate averages
+        avg_train_accuracy = np.mean(train_accuracies)
+        avg_val_accuracy = np.mean(val_accuracies)
+        avg_auc = np.mean(auc_scores)
+
+        # Overfitting detection
+        overfitting = avg_train_accuracy - avg_val_accuracy
+        overfitting_status = "⚠️ Overfitting Risk" if avg_train_accuracy == 1.0 or overfitting > overfit_threshold else "✅ No Overfitting"
+
+        # Calculate a balanced score using normalized AUC and accuracy
+        combined_score = 0.5 * (avg_auc / 1.0 + avg_val_accuracy / 1.0)
+
+        # Store results
+        results.append({
+            'combination': combination,
+            'average_auc': avg_auc,
+            'average_train_accuracy': avg_train_accuracy,
+            'average_val_accuracy': avg_val_accuracy,
+            'overfitting_status': overfitting_status,
+            'combined_score': combined_score,
+            'best_params': best_params
+        })
+        print(f"Tested {combination}: AUC={avg_auc:.4f}, Train Acc={avg_train_accuracy:.4f}, Val Acc={avg_val_accuracy:.4f}, Overfitting={overfitting_status}")
+
+    # Filter non-overfitted combinations and sort by combined score
+    non_overfitted_results = [res for res in results if res['overfitting_status'] == "✅ No Overfitting"]
+    non_overfitted_results.sort(key=lambda x: x['combined_score'], reverse=True)
+
+    return non_overfitted_results
