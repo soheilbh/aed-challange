@@ -870,18 +870,23 @@ def preprocess_features(loaded_data, feature_selection, test_size=0.2, random_st
     return X_train, X_test, y_train, y_test
 
 def grid_search_hyperparameter_tuning(model, param_grid, X_train, y_train, cv=5, scoring='roc_auc_ovr', n_jobs=-1, verbose=1):
-    
-    # Initialize GridSearchCV
-    grid_search = GridSearchCV(estimator=model, param_grid=param_grid, scoring=scoring, cv=cv, n_jobs=n_jobs, verbose=verbose)
-    
-    # Fit the model to the training data
-    grid_search.fit(X_train, y_train)
-    
-    # Get the best parameters and score
-    best_params = grid_search.best_params_
-    best_score = grid_search.best_score_
-    
-    print("\nBest Parameters:", best_params)
-    print(f"Best {scoring} Score: {best_score:.4f}")
-    
-    return grid_search, best_params, best_score
+    try:
+        # Initialize GridSearchCV
+        grid_search = GridSearchCV(estimator=model, param_grid=param_grid, scoring=scoring, cv=cv, n_jobs=n_jobs, verbose=verbose)
+
+        # Fit the model to the training data
+        grid_search.fit(X_train, y_train)
+
+        # Ensure the objects exist
+        best_params = grid_search.best_params_ if grid_search.best_params_ else None
+        best_score = grid_search.best_score_ if grid_search.best_score_ else 0.0
+
+        print("\nBest Parameters:", best_params)
+        print(f"Best {scoring} Score: {best_score:.4f}")
+
+        # Return all three values
+        return grid_search, best_params, best_score
+
+    except Exception as e:
+        print(f"Grid search failed with error: {str(e)}")
+        return None, None, None
