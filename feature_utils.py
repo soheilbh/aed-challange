@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearc
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
 
 def extract_mfcc(sound_data, sample_rate, n_mfcc=13, n_fft=2048, hop_length=512):
     """
@@ -705,7 +706,165 @@ def rf_kfold_cross_validation(features, labels, selected_features_names, n_split
         'overfitting_gap': overfitting_gap
     }
 
+def knn_kfold_cross_validation(features, labels, selected_features_names, n_splits=5, n_pca_components=10, 
+                               normalize=False, apply_pca=False, knn_params=None, overfit_threshold=0.1):
+    # Default KNN parameters if not provided
+    if knn_params is None:
+        knn_params = {'n_neighbors': 5, 'weights': 'uniform', 'metric': 'euclidean'}
+    
+    # Track settings
+    normalization_status = "Enabled" if normalize else "Disabled"
+    pca_status = f"Enabled (n_components={n_pca_components})" if apply_pca else "Disabled"
+
+    print(f"\nSettings:")
+    print(f" - Selected Features: {', '.join(selected_features_names)}")
+    print(f" - Normalization: {normalization_status}")
+    print(f" - PCA: {pca_status}")
+    print(f" - KNN Parameters: {knn_params}\n")
+
+    # Initialize K-Fold Cross-Validation
+    kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+    train_accuracies = []
+    test_accuracies = []
+    auc_scores = []
+    conf_matrices = []
+
+    for train_idx, test_idx in kfold.split(features, labels):
+        X_train, X_test = features[train_idx], features[test_idx]
+        y_train, y_test = labels[train_idx], labels[test_idx]
+
+        # Step 1: Normalize if enabled
+        if normalize:
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_test = scaler.transform(X_test)
+
+        # Step 2: Apply PCA if enabled
+        if apply_pca:
+            pca = PCA(n_components=n_pca_components)
+            X_train = pca.fit_transform(X_train)
+            X_test = pca.transform(X_test)
+
+        # Step 3: Train the KNN classifier
+        knn = KNeighborsClassifier(**knn_params)
+        knn.fit(X_train, y_train)
+
+        # Step 4: Evaluate on training set
+        y_train_pred = knn.predict(X_train)
+        train_accuracy = accuracy_score(y_train, y_train_pred)
+        train_accuracies.append(train_accuracy)
+
+        # Step 5: Evaluate on test set
+        y_test_pred = knn.predict(X_test)
+        y_test_prob = knn.predict_proba(X_test)
+        test_accuracy = accuracy_score(y_test, y_test_pred)
+        test_accuracies.append(test_accuracy)
+
+        # Compute AUC score
+        auc = roc_auc_score(y_test, y_test_prob, multi_class='ovr')
+        auc_scores.append(auc)
+
+        # Save confusion matrix for this fold
+        conf_matrices.append(confusion_matrix(y_test, y_test_pred))
+
+    # Step 6: Calculate average metrics
+    avg_train_accuracy = np.mean(train_accuracies)
+    avg_test_accuracy = np.mean(test_accuracies)
+    avg_auc = np.mean(auc_scores)
+
+    print(f"\nK-Fold Cross-Validation Summary:")
+    print(f"Average Train Accuracy: {avg_train_accuracy:.4f}")
+    print(f"Average Test Accuracy: {avg_test_accuracy:.4f}")
+    print(f"Average AUC: {avg_auc:.4f}")
+
+    # Overfitting detection
+    overfitting_gap = avg_train_accuracy - avg_test_accuracy
+    overfitting_status = "⚠️ Overfitting Risk" if avg_train_accuracy == 1.0 or overfitting_gap > overfit_threshold else "✅ No Overfitting"
+    print(f"Overfitting Status: {overfitting_status} (Train-Test Gap: {overfitting_gap:.4f})")
+
+    # --- Plotting Cross-Validation Results ---
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+    # Boxplot of train and test accuracies across folds
+    axes[0].boxplot([train_accuracies, test_accuracies], labels=["Train Accuracy", "Test Accuracy"], patch_artist=True,
+                    boxprops=dict(facecolor="skyblue", color="black"), medianprops=dict(color="red"))
+    axes[0].set_title("Accuracy per Fold")
+    axes[0].set_ylabel("Accuracy")
+
+    # Boxplot of AUC scores
+    axes[1].boxplot(auc_scores, labels=["AUC"], patch_artist=True,
+                    boxprops=dict(facecolor="lightgreen", color="black"), medianprops=dict(color="red"))
+    axes[1].set_title("AUC per Fold")
+    axes[1].set_ylabel("AUC Score")
+
+    plt.tight_layout()
+    plt.show()
+
+    # --- Confusion Matrix on Last Fold ---
+    print("\nKNN - Classification Report (Last Fold):")
+    print(classification_report(y_test, y_test_pred))
+
+    # Confusion matrix visualization for the last fold
+    plt.figure(figsize=(14, 6))
+    sns.heatmap(conf_matrices[-1], annot=True, fmt='d', cmap='Blues', xticklabels=np.unique(labels), yticklabels=np.unique(labels))
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title('KNN - Confusion Matrix (Last Fold)')
+    plt.show()
+
+    # Return key metrics for further analysis
+    return {
+        'avg_train_accuracy': avg_train_accuracy,
+        'avg_test_accuracy': avg_test_accuracy,
+        'avg_auc': avg_auc,
+        'overfitting_status': overfitting_status,
+        'overfitting_gap': overfitting_gap
+    }
+
 def get_selected_features(feature_combinations, feature_selection):
     selected_features_combination = [feat for feat, selected in feature_selection.items() if selected]
     selected_features = np.hstack([feature_combinations[feat] for feat in selected_features_combination])
     return selected_features, selected_features_combination
+
+def preprocess_features(loaded_data, feature_selection, test_size=0.2, random_state=42, 
+                        apply_normalization=True, apply_pca=False, pca_variance_ratio=0.9):
+    # Extract selected features based on the feature_selection dictionary
+    combined_features = combine_features_with_flags(loaded_data, feature_selection)
+
+    # Display the shapes of each feature type
+    print("Feature shapes and selection status:")
+    for feature, include in feature_selection.items():
+        shape = loaded_data[feature].shape
+        status = "✅" if include else "❌"
+        print(f"{feature.capitalize()} shape: {shape} - Status: {status}")
+    
+    print("\nCombined features shape:", combined_features.shape)
+    
+    # Extract labels
+    y = np.array(loaded_data['keys'])
+
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        combined_features, y, test_size=test_size, random_state=random_state, stratify=y
+    )
+    
+    # Step 1: Normalize the features (if enabled)
+    if apply_normalization:
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_test = scaler.transform(X_test)
+        print("✅ Normalization applied.")
+    else:
+        print("❌ Normalization skipped.")
+
+    # Step 2: Apply PCA (if enabled)
+    if apply_pca:
+        pca = PCA(n_components=pca_variance_ratio)
+        X_train = pca.fit_transform(X_train)
+        X_test = pca.transform(X_test)
+        print(f"✅ PCA applied. Reduced feature shape after PCA (Variance ratio = {pca.n_components}): {X_train.shape}")
+    else:
+        print("❌ PCA skipped.")
+
+    return X_train, X_test, y_train, y_test
