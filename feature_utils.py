@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import librosa
 import itertools
 import matplotlib.pyplot as plt
@@ -255,7 +256,6 @@ def save_multiple_features_to_npz(keys_list, mfcc_list, hist_list, spectral_list
     print(f"Multiple features saved to {out_file}")
 
 def combine_features_with_flags(loaded_data, feature_flags):
-    
     feature_arrays = []
 
     # Map feature names to the arrays in loaded_data
@@ -268,17 +268,31 @@ def combine_features_with_flags(loaded_data, feature_flags):
         'hnr': loaded_data['hnr']
     }
 
+    # Get the number of rows from any feature as a reference
+    reference_rows = list(feature_map.values())[0].shape[0]
+
     # Loop through feature flags and select features with True flag
     for feature, include in feature_flags.items():
         if include:
             if feature in feature_map:
-                feature_arrays.append(feature_map[feature])
+                feature_array = feature_map[feature]
+                
+                # Assert that the feature array has the correct number of rows
+                assert feature_array.shape[0] == reference_rows, f"Feature {feature} has a mismatched number of rows."
+
+                feature_arrays.append(feature_array)
             else:
                 print(f"Warning: {feature} is not available in the loaded data.")
 
+    # Handle the case where no features are selected
+    if not feature_arrays:
+        raise ValueError("No features were selected. Check the feature selection flags.")
+
     # Horizontally stack the selected feature arrays
     combined_features = np.hstack(feature_arrays)
+    print("Combined feature shape:", combined_features.shape)
     return combined_features
+
 
 # Function to test different feature combinations with optional normalization and PCA
 def test_feature_combinations_svm(combinations_dict, y, use_gridsearch=False, svm_params=None,
@@ -827,10 +841,10 @@ def get_selected_features(feature_combinations, feature_selection):
     selected_features = np.hstack([feature_combinations[feat] for feat in selected_features_combination])
     return selected_features, selected_features_combination
 
-def preprocess_features(loaded_data, feature_selection, test_size=0.2, random_state=42, 
-                        apply_normalization=True, apply_pca=False, pca_variance_ratio=0.9):
+def load_and_split_features(loaded_data, feature_selection, test_size=0.2, random_state=42):
     # Extract selected features based on the feature_selection dictionary
     combined_features = combine_features_with_flags(loaded_data, feature_selection)
+    selected_features_names = [feature for feature, include in feature_selection.items() if include]
 
     # Display the shapes of each feature type
     print("Feature shapes and selection status:")
@@ -848,26 +862,41 @@ def preprocess_features(loaded_data, feature_selection, test_size=0.2, random_st
     X_train, X_test, y_train, y_test = train_test_split(
         combined_features, y, test_size=test_size, random_state=random_state, stratify=y
     )
-    
+    return combined_features, X_train, X_test, y_train, y_test, selected_features_names
+
+
+
+def preprocess_features(X_train, X_test, normalize=True, apply_pca=False, n_pca_components=0.9, verbose=True):
     # Step 1: Normalize the features (if enabled)
-    if apply_normalization:
+    if normalize:
         scaler = StandardScaler()
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
-        print("✅ Normalization applied.")
+        if verbose:
+            print("✅ Normalization applied.")
     else:
-        print("❌ Normalization skipped.")
+        if verbose:
+            print("❌ Normalization skipped.")
 
     # Step 2: Apply PCA (if enabled)
     if apply_pca:
-        pca = PCA(n_components=pca_variance_ratio)
+        pca = PCA(n_components=n_pca_components)
         X_train = pca.fit_transform(X_train)
         X_test = pca.transform(X_test)
-        print(f"✅ PCA applied. Reduced feature shape after PCA (Variance ratio = {pca.n_components}): {X_train.shape}")
-    else:
-        print("❌ PCA skipped.")
 
-    return X_train, X_test, y_train, y_test
+        # Dynamically retrieve the number of components selected
+        n_components_selected = pca.n_components_
+        explained_variance = np.sum(pca.explained_variance_ratio_)
+        
+        if verbose:
+            print(f"✅ PCA applied. Selected {n_components_selected} components (explained variance: {explained_variance:.2f}).")
+            print(f"Reduced feature shape after PCA: {X_train.shape[1]}")
+    else:
+        if verbose:
+            print("❌ PCA skipped.")
+
+    return X_train, X_test
+
 
 def grid_search_hyperparameter_tuning(model, param_grid, X_train, y_train, cv=5, scoring='roc_auc_ovr', n_jobs=-1, verbose=1):
     try:
@@ -893,7 +922,7 @@ def grid_search_hyperparameter_tuning(model, param_grid, X_train, y_train, cv=5,
 
 def kfold_cross_validation(features, labels, selected_features_names, model, model_params=None, n_splits=5, 
                            preprocess_params=None, overfit_threshold=0.1):
-    # Track settings
+     # Track settings
     print(f"\nSettings:")
     print(f" - Selected Features: {', '.join(selected_features_names)}")
     print(f" - Model: {model.__class__.__name__}")
@@ -905,16 +934,32 @@ def kfold_cross_validation(features, labels, selected_features_names, model, mod
 
     train_accuracies = []
     test_accuracies = []
-    auc_scores = []
+    auc_scores = [] if hasattr(model, "predict_proba") else None  # Initialize only if applicable
     conf_matrices = []
 
-    for train_idx, test_idx in kfold.split(features, labels):
+    # Loop through each fold
+    for fold, (train_idx, test_idx) in enumerate(kfold.split(features, labels)):
         X_train, X_test = features[train_idx], features[test_idx]
         y_train, y_test = labels[train_idx], labels[test_idx]
 
+        # Display class distribution in each fold correctly using Pandas
+        train_distribution = pd.Series(y_train).value_counts().reindex(np.unique(labels), fill_value=0)
+        test_distribution = pd.Series(y_test).value_counts().reindex(np.unique(labels), fill_value=0)
+        
         # Step 1: Preprocess the features (normalize, apply PCA, etc.)
-        X_train, X_test = preprocess_features(X_train, X_test, preprocess_params)
+        X_train, X_test = preprocess_features(
+            X_train, X_test, 
+            normalize=preprocess_params.get('normalize', False), 
+            apply_pca=preprocess_params.get('apply_pca', False), 
+            n_pca_components=preprocess_params.get('n_pca_components', 0.9),
+            verbose=False  # Disable repetitive messages
+        )
 
+        # Display the correct feature dimension after preprocessing
+        print(f"\n[Fold {fold + 1}]")
+        print(f"   - Training set size: {len(y_train)}, Test set size: {len(y_test)}")
+        print(f"   - Feature dimension after preprocessing: {X_train.shape[1]}")
+        
         # Step 2: Initialize and train the model
         classifier = model.set_params(**model_params)  # Pass custom parameters
         classifier.fit(X_train, y_train)
@@ -930,13 +975,19 @@ def kfold_cross_validation(features, labels, selected_features_names, model, mod
         test_accuracy = accuracy_score(y_test, y_test_pred)
         test_accuracies.append(test_accuracy)
 
-        # Compute AUC score if available
-        if y_test_prob is not None:
+        # Compute AUC score if applicable
+        auc = None
+        if auc_scores is not None and y_test_prob is not None:
             auc = roc_auc_score(y_test, y_test_prob, multi_class='ovr')
             auc_scores.append(auc)
 
         # Save confusion matrix for this fold
         conf_matrices.append(confusion_matrix(y_test, y_test_pred))
+
+        # Display fold-wise metrics
+        print(f"   - Train Accuracy: {train_accuracy:.4f}, Test Accuracy: {test_accuracy:.4f}")
+        if auc is not None:
+            print(f"   - AUC: {auc:.4f}")
 
     # Calculate average metrics
     avg_train_accuracy = np.mean(train_accuracies)
@@ -955,7 +1006,7 @@ def kfold_cross_validation(features, labels, selected_features_names, model, mod
     print(f"Overfitting Status: {overfitting_status} (Train-Test Gap: {overfitting_gap:.4f})")
 
     # --- Plotting Cross-Validation Results ---
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 4))
 
     # Boxplot of train and test accuracies across folds
     axes[0].boxplot([train_accuracies, test_accuracies], labels=["Train Accuracy", "Test Accuracy"], patch_artist=True,
@@ -978,7 +1029,7 @@ def kfold_cross_validation(features, labels, selected_features_names, model, mod
     print(classification_report(y_test, y_test_pred))
 
     # Confusion matrix visualization for the last fold
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(14, 6))
     sns.heatmap(conf_matrices[-1], annot=True, fmt='d', cmap='Blues', xticklabels=np.unique(labels), yticklabels=np.unique(labels))
     plt.xlabel('Predicted')
     plt.ylabel('Actual')
