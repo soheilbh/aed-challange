@@ -884,4 +884,4 @@ def grid_search_hyperparameter_tuning(model, param_grid, X_train, y_train, cv=5,
     print("\nBest Parameters:", best_params)
     print(f"Best {scoring} Score: {best_score:.4f}")
     
-    return best_params, best_score
+    return grid_search, best_params, best_score
