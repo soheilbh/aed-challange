@@ -130,52 +130,52 @@ def compute_harmonic_to_noise_ratio(sound_data, sample_rate, n_fft=2048, hop_len
     hnr = harmonic_energy / (percussive_energy + 1e-9)  # Small value to avoid division by zero
     return np.array([hnr])
 
-def compute_combined_features_for_wave_list(wave_list_data):
-    keys_list = []
-    feature_list = []
+# def compute_combined_features_for_wave_list(wave_list_data):
+#     keys_list = []
+#     feature_list = []
 
-    for category, filename, sample_rate, sound_data in wave_list_data:
-        # Extract class number directly from filename (before .wav)
-        class_number = int(filename.split('-')[-1].replace('.wav', ''))
-        keys_list.append(class_number)
+#     for category, filename, sample_rate, sound_data in wave_list_data:
+#         # Extract class number directly from filename (before .wav)
+#         class_number = int(filename.split('-')[-1].replace('.wav', ''))
+#         keys_list.append(class_number)
 
-        # Step 1: Extract MFCCs and delta MFCCs
-        mfcc_matrix = librosa.feature.mfcc(y=sound_data, sr=sample_rate, n_mfcc=13)
-        delta_mfcc = librosa.feature.delta(mfcc_matrix)
+#         # Step 1: Extract MFCCs and delta MFCCs
+#         mfcc_matrix = librosa.feature.mfcc(y=sound_data, sr=sample_rate, n_mfcc=13)
+#         delta_mfcc = librosa.feature.delta(mfcc_matrix)
 
-        # Compute mean and std of MFCCs and delta MFCCs
-        mfcc_mean = np.mean(mfcc_matrix, axis=1)
-        delta_mfcc_mean = np.mean(delta_mfcc, axis=1)
-        mfcc_feature_vector = np.concatenate([mfcc_mean, delta_mfcc_mean])
+#         # Compute mean and std of MFCCs and delta MFCCs
+#         mfcc_mean = np.mean(mfcc_matrix, axis=1)
+#         delta_mfcc_mean = np.mean(delta_mfcc, axis=1)
+#         mfcc_feature_vector = np.concatenate([mfcc_mean, delta_mfcc_mean])
 
-        # Step 2: Extract histogram features
-        hist_feature_vector = extract_binned_spectrogram_hist(sound_data, sample_rate)
+#         # Step 2: Extract histogram features
+#         hist_feature_vector = extract_binned_spectrogram_hist(sound_data, sample_rate)
 
-        # Step 3: Extract spectral features using defined functions
-        spectral_centroid = extract_spectral_centroid(sound_data, sample_rate)
-        spectral_contrast = extract_spectral_contrast(sound_data, sample_rate, n_bands=7)
-        pitch_features = extract_pitch(sound_data, sample_rate)
+#         # Step 3: Extract spectral features using defined functions
+#         spectral_centroid = extract_spectral_centroid(sound_data, sample_rate)
+#         spectral_contrast = extract_spectral_contrast(sound_data, sample_rate, n_bands=7)
+#         pitch_features = extract_pitch(sound_data, sample_rate)
 
-        # Step 4: Extract ZCR, Amplitude Envelope, and HNR features
-        zcr_features = extract_zcr(sound_data, sample_rate)  # [mean ZCR, std ZCR]
-        envelope_features = extract_amplitude_envelope_features(sound_data, sample_rate)  # [mean, max, variance, attack, decay]
-        hnr_features = compute_harmonic_to_noise_ratio(sound_data, sample_rate)  # [HNR]
+#         # Step 4: Extract ZCR, Amplitude Envelope, and HNR features
+#         zcr_features = extract_zcr(sound_data, sample_rate)  # [mean ZCR, std ZCR]
+#         envelope_features = extract_amplitude_envelope_features(sound_data, sample_rate)  # [mean, max, variance, attack, decay]
+#         hnr_features = compute_harmonic_to_noise_ratio(sound_data, sample_rate)  # [HNR]
 
-        # Step 5: Combine all features into one vector
-        feature_vector = np.concatenate([
-            mfcc_feature_vector,
-            hist_feature_vector,
-            spectral_centroid,     # Spectral centroid (mean, std)
-            spectral_contrast,     # Spectral contrast features
-            pitch_features,        # Pitch features (mean, std)
-            zcr_features,          # Zero-Crossing Rate features
-            envelope_features,     # Amplitude envelope features
-            hnr_features           # Harmonic-to-Noise Ratio
-        ])
+#         # Step 5: Combine all features into one vector
+#         feature_vector = np.concatenate([
+#             mfcc_feature_vector,
+#             hist_feature_vector,
+#             spectral_centroid,     # Spectral centroid (mean, std)
+#             spectral_contrast,     # Spectral contrast features
+#             pitch_features,        # Pitch features (mean, std)
+#             zcr_features,          # Zero-Crossing Rate features
+#             envelope_features,     # Amplitude envelope features
+#             hnr_features           # Harmonic-to-Noise Ratio
+#         ])
 
-        feature_list.append(feature_vector)
+#         feature_list.append(feature_vector)
 
-    return keys_list, feature_list
+#     return keys_list, feature_list
 
 
 
@@ -183,7 +183,9 @@ def compute_features_for_wave_list(wave_list_data):
     keys_list = []
     mfcc_list = []
     hist_list = []
-    spectral_list = []
+    spectral_centroid_list = []
+    spectral_contrast_list = []
+    pitch_features_list = []
     zcr_list = []
     envelope_list = []
     hnr_list = []
@@ -210,14 +212,16 @@ def compute_features_for_wave_list(wave_list_data):
         spectral_contrast = extract_spectral_contrast(sound_data, sample_rate, n_bands=7)  # Shape: (2 * n_bands,)
         pitch_features = extract_pitch(sound_data, sample_rate)  # Shape: (2,)
 
-        # Concatenate all spectral features into a single vector
-        spectral_feature_vector = np.concatenate([
-            spectral_centroid,
-            spectral_contrast,
-            pitch_features
-        ])
-
-        spectral_list.append(spectral_feature_vector)
+        # # Concatenate all spectral features into a single vector
+        # spectral_feature_vector = np.concatenate([
+        #     spectral_centroid,
+        #     spectral_contrast,
+        #     pitch_features
+        # ])
+        spectral_centroid_list.append(spectral_centroid)
+        spectral_contrast_list.append(spectral_contrast)
+        pitch_features_list.append(pitch_features)
+        # spectral_list.append(spectral_feature_vector)
 
         # Step 4: Zero-Crossing Rate (ZCR)
         zcr_features = extract_zcr(sound_data, sample_rate)
@@ -231,7 +235,7 @@ def compute_features_for_wave_list(wave_list_data):
         hnr_features = compute_harmonic_to_noise_ratio(sound_data, sample_rate)
         hnr_list.append(hnr_features)
 
-    return keys_list, mfcc_list, hist_list, spectral_list, zcr_list, envelope_list, hnr_list
+    return keys_list, mfcc_list, hist_list, spectral_centroid_list, spectral_contrast_list, pitch_features_list, zcr_list, envelope_list, hnr_list
 
 
 def save_features_to_npz(keys_list, feature_list, out_file="features.npz"):
@@ -242,13 +246,15 @@ def save_features_to_npz(keys_list, feature_list, out_file="features.npz"):
     np.savez(out_file, keys=keys_list, features=feature_array)
     print(f"Features saved to {out_file}")
 
-def save_multiple_features_to_npz(keys_list, mfcc_list, hist_list, spectral_list, zcr_list, envelope_list, hnr_list, out_file="features_multiple.npz"):
+def save_multiple_features_to_npz(keys_list, mfcc_list, hist_list, spectral_centroid_list, spectral_contrast_list, pitch_features_list, zcr_list, envelope_list, hnr_list, out_file="features_multiple.npz"):
 
     np.savez(out_file, 
              keys=keys_list, 
              mfcc=np.vstack(mfcc_list), 
-             hist=np.vstack(hist_list), 
-             spectral=np.vstack(spectral_list), 
+             hist=np.vstack(hist_list),  
+             spectral_centroid=np.vstack(spectral_centroid_list),
+             spectral_contrast=np.vstack(spectral_contrast_list),
+             pitch_features=np.vstack(pitch_features_list),
              zcr=np.vstack(zcr_list), 
              envelope=np.vstack(envelope_list), 
              hnr=np.vstack(hnr_list))
@@ -262,7 +268,9 @@ def combine_features_with_flags(loaded_data, feature_flags):
     feature_map = {
         'mfcc': loaded_data['mfcc'],
         'hist': loaded_data['hist'],
-        'spectral': loaded_data['spectral'],
+        'spectral_centroid': loaded_data['spectral_centroid'],
+        'spectral_contrast': loaded_data['spectral_contrast'],
+        'pitch_features': loaded_data['pitch_features'],
         'zcr': loaded_data['zcr'],
         'envelope': loaded_data['envelope'],
         'hnr': loaded_data['hnr']
