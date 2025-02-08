@@ -890,3 +890,106 @@ def grid_search_hyperparameter_tuning(model, param_grid, X_train, y_train, cv=5,
     except Exception as e:
         print(f"Grid search failed with error: {str(e)}")
         return None, None, None
+
+def kfold_cross_validation(features, labels, selected_features_names, model, model_params=None, n_splits=5, 
+                           preprocess_params=None, overfit_threshold=0.1):
+    # Track settings
+    print(f"\nSettings:")
+    print(f" - Selected Features: {', '.join(selected_features_names)}")
+    print(f" - Model: {model.__class__.__name__}")
+    print(f" - Model Parameters: {model_params}\n")
+    print(f" - Preprocessing: {preprocess_params}\n")
+
+    # Initialize K-Fold Cross-Validation
+    kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+    train_accuracies = []
+    test_accuracies = []
+    auc_scores = []
+    conf_matrices = []
+
+    for train_idx, test_idx in kfold.split(features, labels):
+        X_train, X_test = features[train_idx], features[test_idx]
+        y_train, y_test = labels[train_idx], labels[test_idx]
+
+        # Step 1: Preprocess the features (normalize, apply PCA, etc.)
+        X_train, X_test = preprocess_features(X_train, X_test, preprocess_params)
+
+        # Step 2: Initialize and train the model
+        classifier = model.set_params(**model_params)  # Pass custom parameters
+        classifier.fit(X_train, y_train)
+
+        # Step 3: Evaluate on training set
+        y_train_pred = classifier.predict(X_train)
+        train_accuracy = accuracy_score(y_train, y_train_pred)
+        train_accuracies.append(train_accuracy)
+
+        # Step 4: Evaluate on test set
+        y_test_pred = classifier.predict(X_test)
+        y_test_prob = classifier.predict_proba(X_test) if hasattr(classifier, "predict_proba") else None
+        test_accuracy = accuracy_score(y_test, y_test_pred)
+        test_accuracies.append(test_accuracy)
+
+        # Compute AUC score if available
+        if y_test_prob is not None:
+            auc = roc_auc_score(y_test, y_test_prob, multi_class='ovr')
+            auc_scores.append(auc)
+
+        # Save confusion matrix for this fold
+        conf_matrices.append(confusion_matrix(y_test, y_test_pred))
+
+    # Calculate average metrics
+    avg_train_accuracy = np.mean(train_accuracies)
+    avg_test_accuracy = np.mean(test_accuracies)
+    avg_auc = np.mean(auc_scores) if auc_scores else None
+
+    print(f"\nK-Fold Cross-Validation Summary:")
+    print(f"Average Train Accuracy: {avg_train_accuracy:.4f}")
+    print(f"Average Test Accuracy: {avg_test_accuracy:.4f}")
+    if avg_auc is not None:
+        print(f"Average AUC: {avg_auc:.4f}")
+
+    # Overfitting detection
+    overfitting_gap = avg_train_accuracy - avg_test_accuracy
+    overfitting_status = "⚠️ Overfitting Risk" if avg_train_accuracy == 1.0 or overfitting_gap > overfit_threshold else "✅ No Overfitting"
+    print(f"Overfitting Status: {overfitting_status} (Train-Test Gap: {overfitting_gap:.4f})")
+
+    # --- Plotting Cross-Validation Results ---
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+    # Boxplot of train and test accuracies across folds
+    axes[0].boxplot([train_accuracies, test_accuracies], labels=["Train Accuracy", "Test Accuracy"], patch_artist=True,
+                    boxprops=dict(facecolor="skyblue", color="black"), medianprops=dict(color="red"))
+    axes[0].set_title("Accuracy per Fold")
+    axes[0].set_ylabel("Accuracy")
+
+    # Boxplot of AUC scores (if available)
+    if auc_scores:
+        axes[1].boxplot(auc_scores, labels=["AUC"], patch_artist=True,
+                        boxprops=dict(facecolor="lightgreen", color="black"), medianprops=dict(color="red"))
+        axes[1].set_title("AUC per Fold")
+        axes[1].set_ylabel("AUC Score")
+
+    plt.tight_layout()
+    plt.show()
+
+    # --- Confusion Matrix on Last Fold ---
+    print("\nClassification Report (Last Fold):")
+    print(classification_report(y_test, y_test_pred))
+
+    # Confusion matrix visualization for the last fold
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(conf_matrices[-1], annot=True, fmt='d', cmap='Blues', xticklabels=np.unique(labels), yticklabels=np.unique(labels))
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title(f'{model.__class__.__name__} - Confusion Matrix (Last Fold)')
+    plt.show()
+
+    # Return key metrics for further analysis
+    return {
+        'avg_train_accuracy': avg_train_accuracy,
+        'avg_test_accuracy': avg_test_accuracy,
+        'avg_auc': avg_auc,
+        'overfitting_status': overfitting_status,
+        'overfitting_gap': overfitting_gap
+    }
