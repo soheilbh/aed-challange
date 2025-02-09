@@ -11,6 +11,10 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.cluster import KMeans
+from sklearn.manifold import TSNE
+from sklearn.metrics import silhouette_score, adjusted_rand_score, confusion_matrix
+from scipy.stats import mode
 
 def extract_mfcc(sound_data, sample_rate, n_mfcc=13, n_fft=2048, hop_length=512):
     """
@@ -585,3 +589,94 @@ def test_feature_combinations(
               f"Overfitting Status: {res['overfitting_status']}")
 
     return sorted_results
+
+
+def evaluate_kmeans_feature_groups(feature_groups_selection, loaded_data, k=10, use_kmeans_pp=True, n_init=30, apply_pca_options=[True, False], verbose=True):
+    results_summary = []
+
+    for group_name, feature_selection in feature_groups_selection.items():
+        for apply_pca in apply_pca_options:  
+            if verbose:
+                print(f"\n🔄 Testing Feature Group: {group_name} with PCA={'Yes' if apply_pca else 'No'}")
+            
+            selected_features, X_train, X_test, y_train, y_test, selected_features_names = load_and_split_features(
+                loaded_data, feature_selection
+            )
+
+            X_full = np.vstack([X_train, X_test])
+            y_full = np.hstack([y_train, y_test])
+
+            # Preprocess features
+            X_full, _ = preprocess_features(
+                X_full, X_full, normalize=True, apply_pca=apply_pca, n_pca_components=0.95, verbose=False
+            )
+
+            # Choose KMeans++ initialization if specified
+            kmeans = KMeans(
+                n_clusters=k, 
+                random_state=42, 
+                n_init=n_init, 
+                init='k-means++' if use_kmeans_pp else 'random'
+            )
+            cluster_labels = kmeans.fit_predict(X_full)
+
+            # Calculate Silhouette and ARI scores
+            silhouette = silhouette_score(X_full, cluster_labels)
+            ari_score = adjusted_rand_score(y_full, cluster_labels)
+
+            # Calculate majority class metrics
+            percentage_majority_class = {}
+            weighted_accuracy_sum = 0
+            purity_numerator = 0
+            total_samples = len(y_full)
+
+            if verbose:
+                print("\n📊 Cluster Statistics:")
+            for cluster in np.unique(cluster_labels):
+                assigned_class = mode(y_full[cluster_labels == cluster], keepdims=True).mode[0]
+                total_samples_in_cluster = np.sum(cluster_labels == cluster)
+                majority_class_count = np.sum((cluster_labels == cluster) & (y_full == assigned_class))
+                percentage = (majority_class_count / total_samples_in_cluster) * 100
+                percentage_majority_class[cluster] = percentage
+                weighted_accuracy_sum += (majority_class_count / total_samples)
+                purity_numerator += majority_class_count
+
+                # Print cluster-level details
+                if verbose:
+                    print(f"Cluster {cluster} (Majority Class: {assigned_class}) → {percentage:.2f}% of samples belong to class {assigned_class}")
+
+            # Calculate overall metrics
+            mean_majority_percentage = np.mean(list(percentage_majority_class.values()))
+            purity_score = purity_numerator / total_samples
+
+            if verbose:
+                print(f"\nMean Average of Majority Class Percentages: {mean_majority_percentage:.2f}%")
+                print(f"Weighted Accuracy: {weighted_accuracy_sum:.4f}")
+                print(f"Purity Score: {purity_score:.4f}")
+
+            # Store results
+            results_summary.append({
+                'Feature Group': group_name,
+                'PCA': 'Yes' if apply_pca else 'No',
+                'KMeans Ini.': 'KMeans++' if use_kmeans_pp else 'Random',
+                'Sil. Score': silhouette,
+                'ARI Score': ari_score,
+                'MMP': mean_majority_percentage,
+                'Weighted Acc.': weighted_accuracy_sum,
+                'Purity Score': purity_score
+            })
+
+    # Convert results to a DataFrame and display
+    results_df = pd.DataFrame(results_summary)
+
+    # Update the filename based on the KMeans initialization
+    filename = "feature_group_results_kmeanspp.csv" if use_kmeans_pp else "feature_group_results_kmeans.csv"
+
+    print("\n📊 Summary of Results:")
+    print(results_df)
+
+    # Save results to a meaningful CSV filename
+    results_df.to_csv(filename, index=False)
+    print(f"\n✅ Results saved to {filename}")
+
+    return results_df
