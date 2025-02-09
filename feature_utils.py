@@ -364,6 +364,8 @@ def grid_search_hyperparameter_tuning(model, param_grid, X_train, y_train,
         return None, None, None
 
 # Function to perform K-Fold Cross-Validation with optional preprocessing and evaluation metrics
+from sklearn.metrics import classification_report
+
 def kfold_cross_validation(
     features,
     labels,
@@ -378,7 +380,6 @@ def kfold_cross_validation(
     plot_confusion_matrix=True,
     display_classification_report=True
 ):
-
     print(f"\nSettings:")
     print(f" - Selected Features: {', '.join(selected_features_names)}")
     print(f" - Model: {model.__class__.__name__}")
@@ -388,6 +389,8 @@ def kfold_cross_validation(
     kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     train_accuracies, test_accuracies, auc_scores = [], [], [] if hasattr(model, "predict_proba") else None
     conf_matrices = []
+    tpr_list, fpr_list = [], []  # Initialize TPR and FPR lists
+    precisions, recalls, f1_scores = [], [], []  # Initialize lists for precision, recall, f1-score
 
     for fold, (train_idx, test_idx) in enumerate(kfold.split(features, labels)):
         X_train, X_test = features[train_idx], features[test_idx]
@@ -423,7 +426,33 @@ def kfold_cross_validation(
             auc = roc_auc_score(y_test, y_test_prob, multi_class='ovr')
             auc_scores.append(auc)
 
-        conf_matrices.append(confusion_matrix(y_test, y_test_pred))
+        # Confusion Matrix
+        cm = confusion_matrix(y_test, y_test_pred)
+        conf_matrices.append(cm)
+
+        # Calculate TPR and FPR
+        for i in range(len(cm)):  # For each class
+            TP = cm[i, i]
+            FP = cm[:, i].sum() - TP
+            FN = cm[i, :].sum() - TP
+            TN = cm.sum() - (TP + FP + FN)
+            
+            # Avoid division by zero
+            tpr = TP / (TP + FN) if (TP + FN) > 0 else 0
+            fpr = FP / (FP + TN) if (FP + TN) > 0 else 0
+
+            tpr_list.append(tpr)
+            fpr_list.append(fpr)
+
+        # Classification Report for Precision, Recall, F1-score (Last Fold Only)
+        report = classification_report(y_test, y_test_pred, output_dict=True, zero_division=0)
+        avg_precision = np.mean([report[str(cls)]['precision'] for cls in report if cls.isdigit()])
+        avg_recall = np.mean([report[str(cls)]['recall'] for cls in report if cls.isdigit()])
+        avg_f1_score = np.mean([report[str(cls)]['f1-score'] for cls in report if cls.isdigit()])
+
+        precisions.append(avg_precision)
+        recalls.append(avg_recall)
+        f1_scores.append(avg_f1_score)
 
         # Print iteration details
         if display_iteration_details:
@@ -431,11 +460,17 @@ def kfold_cross_validation(
             print(f"   - Train Accuracy: {train_accuracy:.4f}, Test Accuracy: {test_accuracy:.4f}")
             if auc is not None:
                 print(f"   - AUC: {auc:.4f}")
+            print(f"   - Precision: {avg_precision:.4f}, Recall: {avg_recall:.4f}, F1-score: {avg_f1_score:.4f}")
 
     # Compute average scores
     avg_train_accuracy = np.mean(train_accuracies)
     avg_test_accuracy = np.mean(test_accuracies)
     avg_auc = np.mean(auc_scores) if auc_scores else None
+    avg_tpr = np.mean(tpr_list)
+    avg_fpr = np.mean(fpr_list)
+    avg_precision = np.mean(precisions)
+    avg_recall = np.mean(recalls)
+    avg_f1_score = np.mean(f1_scores)
 
     # Check for overfitting
     overfitting_gap = avg_train_accuracy - avg_test_accuracy
@@ -446,45 +481,26 @@ def kfold_cross_validation(
     print(f" - Average Test Accuracy: {avg_test_accuracy:.4f}")
     if avg_auc is not None:
         print(f" - Average AUC: {avg_auc:.4f}")
+    print(f" - Average TPR: {avg_tpr:.4f}")
+    print(f" - Average FPR: {avg_fpr:.4f}")
+    print(f" - Average Precision: {avg_precision:.4f}")
+    print(f" - Average Recall: {avg_recall:.4f}")
+    print(f" - Average F1-score: {avg_f1_score:.4f}")
     print(f" - Overfitting Status: {overfitting_status} (Train-Test Gap: {overfitting_gap:.4f})")
-
-    # --- Boxplot Visualization ---
-    if plot_boxplots:
-        fig, axes = plt.subplots(1, 2, figsize=(14, 4))
-        axes[0].boxplot([train_accuracies, test_accuracies], labels=["Train", "Test"], patch_artist=True, 
-                        boxprops=dict(facecolor="skyblue"), medianprops=dict(color="red"))
-        axes[0].set_title("Accuracy per Fold")
-        axes[0].set_ylabel("Accuracy")
-        
-        if auc_scores:
-            axes[1].boxplot(auc_scores, labels=["AUC"], patch_artist=True, 
-                            boxprops=dict(facecolor="lightgreen"), medianprops=dict(color="red"))
-            axes[1].set_title("AUC per Fold")
-            axes[1].set_ylabel("AUC")
-        
-        plt.tight_layout()
-        plt.show()
-
-    # --- Confusion Matrix Visualization ---
-    if plot_confusion_matrix:
-        print("\nConfusion Matrix (Last Fold):")
-        plt.figure(figsize=(14, 6))
-        sns.heatmap(conf_matrices[-1], annot=True, fmt='d', cmap='Blues', 
-                    xticklabels=np.unique(labels), yticklabels=np.unique(labels))
-        plt.xlabel('Predicted')
-        plt.ylabel('Actual')
-        plt.title(f'Confusion Matrix for Last Fold')
-        plt.show()
-
-    # --- Classification Report ---
-    if display_classification_report:
-        print("\nClassification Report (Last Fold):")
-        print(classification_report(y_test, y_test_pred))
 
     return {
         'avg_train_accuracy': avg_train_accuracy,
         'avg_test_accuracy': avg_test_accuracy,
         'avg_auc': avg_auc,
+        'avg_tpr': avg_tpr,
+        'avg_fpr': avg_fpr,
+        'avg_precision': avg_precision,
+        'avg_recall': avg_recall,
+        'avg_f1_score': avg_f1_score,
+        'train_accuracies': train_accuracies,
+        'test_accuracies': test_accuracies,
+        'auc_scores': auc_scores if auc_scores else None,
+        'confusion_matrices': conf_matrices,
         'overfitting_status': overfitting_status,
         'overfitting_gap': overfitting_gap
     }
@@ -824,3 +840,6 @@ def print_feature_groups_with_totals(groups, loaded_data):
         )       
         print(f"\n🔍 Feature Group: {group_name} | Total Features: {total_components} components")
         print(f"Selected Features: {', '.join(selected_features) if selected_features else 'None selected'}")
+
+
+
