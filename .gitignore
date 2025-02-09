@@ -8,6 +8,10 @@ audio
 
 datasets
 
+temp
+
+.venv
+
 *.hdf5
 *.npz
 .ipynb_checkpoints/data_utils-checkpoint.py
