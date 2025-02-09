@@ -337,123 +337,110 @@ def grid_search_hyperparameter_tuning(model, param_grid, X_train, y_train, cv=5,
         print(f"Grid search failed with error: {str(e)}")
         return None, None, None
 
-def kfold_cross_validation(features, labels, selected_features_names, model, model_params=None, n_splits=5, 
-                           preprocess_params=None, overfit_threshold=0.1):
-     # Track settings
+def kfold_cross_validation(
+    features,
+    labels,
+    selected_features_names,
+    model,
+    model_params=None,
+    n_splits=5,
+    preprocess_params=None,
+    overfit_threshold=0.1,
+    plot_boxplots=True,
+    display_iteration_details=True,
+    plot_confusion_matrix=True,
+    display_classification_report=True
+):
     print(f"\nSettings:")
     print(f" - Selected Features: {', '.join(selected_features_names)}")
     print(f" - Model: {model.__class__.__name__}")
     print(f" - Model Parameters: {model_params}\n")
     print(f" - Preprocessing: {preprocess_params}\n")
 
-    # Initialize K-Fold Cross-Validation
     kfold = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-
-    train_accuracies = []
-    test_accuracies = []
-    auc_scores = [] if hasattr(model, "predict_proba") else None  # Initialize only if applicable
+    train_accuracies, test_accuracies, auc_scores = [], [], [] if hasattr(model, "predict_proba") else None
     conf_matrices = []
 
-    # Loop through each fold
     for fold, (train_idx, test_idx) in enumerate(kfold.split(features, labels)):
         X_train, X_test = features[train_idx], features[test_idx]
         y_train, y_test = labels[train_idx], labels[test_idx]
 
-        # Display class distribution in each fold correctly using Pandas
-        train_distribution = pd.Series(y_train).value_counts().reindex(np.unique(labels), fill_value=0)
-        test_distribution = pd.Series(y_test).value_counts().reindex(np.unique(labels), fill_value=0)
-        
-        # Step 1: Preprocess the features (normalize, apply PCA, etc.)
         X_train, X_test = preprocess_features(
             X_train, X_test, 
             normalize=preprocess_params.get('normalize', False), 
             apply_pca=preprocess_params.get('apply_pca', False), 
             n_pca_components=preprocess_params.get('n_pca_components', 0.9),
-            verbose=False  # Disable repetitive messages
+            verbose=False
         )
 
-        # Display the correct feature dimension after preprocessing
-        print(f"\n[Fold {fold + 1}]")
-        print(f"   - Training set size: {len(y_train)}, Test set size: {len(y_test)}")
-        print(f"   - Feature dimension after preprocessing: {X_train.shape[1]}")
-        
-        # Step 2: Initialize and train the model
-        classifier = model.set_params(**model_params)  # Pass custom parameters
+        classifier = model.set_params(**model_params)
         classifier.fit(X_train, y_train)
 
-        # Step 3: Evaluate on training set
         y_train_pred = classifier.predict(X_train)
         train_accuracy = accuracy_score(y_train, y_train_pred)
         train_accuracies.append(train_accuracy)
 
-        # Step 4: Evaluate on test set
         y_test_pred = classifier.predict(X_test)
         y_test_prob = classifier.predict_proba(X_test) if hasattr(classifier, "predict_proba") else None
         test_accuracy = accuracy_score(y_test, y_test_pred)
         test_accuracies.append(test_accuracy)
 
-        # Compute AUC score if applicable
         auc = None
         if auc_scores is not None and y_test_prob is not None:
             auc = roc_auc_score(y_test, y_test_prob, multi_class='ovr')
             auc_scores.append(auc)
 
-        # Save confusion matrix for this fold
         conf_matrices.append(confusion_matrix(y_test, y_test_pred))
 
-        # Display fold-wise metrics
-        print(f"   - Train Accuracy: {train_accuracy:.4f}, Test Accuracy: {test_accuracy:.4f}")
-        if auc is not None:
-            print(f"   - AUC: {auc:.4f}")
+        # Detailed printout if enabled
+        if display_iteration_details:
+            print(f"\n[Fold {fold + 1}]")
+            print(f"   - Train Accuracy: {train_accuracy:.4f}, Test Accuracy: {test_accuracy:.4f}")
+            if auc is not None:
+                print(f"   - AUC: {auc:.4f}")
 
-    # Calculate average metrics
     avg_train_accuracy = np.mean(train_accuracies)
     avg_test_accuracy = np.mean(test_accuracies)
     avg_auc = np.mean(auc_scores) if auc_scores else None
 
-    print(f"\nK-Fold Cross-Validation Summary:")
-    print(f"Average Train Accuracy: {avg_train_accuracy:.4f}")
-    print(f"Average Test Accuracy: {avg_test_accuracy:.4f}")
-    if avg_auc is not None:
-        print(f"Average AUC: {avg_auc:.4f}")
-
-    # Overfitting detection
     overfitting_gap = avg_train_accuracy - avg_test_accuracy
     overfitting_status = "⚠️ Overfitting Risk" if avg_train_accuracy == 1.0 or overfitting_gap > overfit_threshold else "✅ No Overfitting"
-    print(f"Overfitting Status: {overfitting_status} (Train-Test Gap: {overfitting_gap:.4f})")
 
-    # --- Plotting Cross-Validation Results ---
-    fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+    print(f"\nK-Fold Summary:")
+    print(f" - Average Train Accuracy: {avg_train_accuracy:.4f}")
+    print(f" - Average Test Accuracy: {avg_test_accuracy:.4f}")
+    if avg_auc is not None:
+        print(f" - Average AUC: {avg_auc:.4f}")
+    print(f" - Overfitting Status: {overfitting_status} (Train-Test Gap: {overfitting_gap:.4f})")
 
-    # Boxplot of train and test accuracies across folds
-    axes[0].boxplot([train_accuracies, test_accuracies], labels=["Train Accuracy", "Test Accuracy"], patch_artist=True,
-                    boxprops=dict(facecolor="skyblue", color="black"), medianprops=dict(color="red"))
-    axes[0].set_title("Accuracy per Fold")
-    axes[0].set_ylabel("Accuracy")
+    # --- Boxplot Visualization ---
+    if plot_boxplots:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+        axes[0].boxplot([train_accuracies, test_accuracies], labels=["Train", "Test"], patch_artist=True, boxprops=dict(facecolor="skyblue"), medianprops=dict(color="red"))
+        axes[0].set_title("Accuracy per Fold")
+        axes[0].set_ylabel("Accuracy")
+        if auc_scores:
+            axes[1].boxplot(auc_scores, labels=["AUC"], patch_artist=True, boxprops=dict(facecolor="lightgreen"), medianprops=dict(color="red"))
+            axes[1].set_title("AUC per Fold")
+            axes[1].set_ylabel("AUC")
+        plt.tight_layout()
+        plt.show()
 
-    # Boxplot of AUC scores (if available)
-    if auc_scores:
-        axes[1].boxplot(auc_scores, labels=["AUC"], patch_artist=True,
-                        boxprops=dict(facecolor="lightgreen", color="black"), medianprops=dict(color="red"))
-        axes[1].set_title("AUC per Fold")
-        axes[1].set_ylabel("AUC Score")
+    # --- Confusion Matrix Visualization ---
+    if plot_confusion_matrix:
+        print("\nConfusion Matrix (Last Fold):")
+        plt.figure(figsize=(10, 6))
+        sns.heatmap(conf_matrices[-1], annot=True, fmt='d', cmap='Blues', xticklabels=np.unique(labels), yticklabels=np.unique(labels))
+        plt.xlabel('Predicted')
+        plt.ylabel('Actual')
+        plt.title(f'Confusion Matrix for Last Fold')
+        plt.show()
 
-    plt.tight_layout()
-    plt.show()
+    # --- Classification Report ---
+    if display_classification_report:
+        print("\nClassification Report (Last Fold):")
+        print(classification_report(y_test, y_test_pred))
 
-    # --- Confusion Matrix on Last Fold ---
-    print("\nClassification Report (Last Fold):")
-    print(classification_report(y_test, y_test_pred))
-
-    # Confusion matrix visualization for the last fold
-    plt.figure(figsize=(14, 6))
-    sns.heatmap(conf_matrices[-1], annot=True, fmt='d', cmap='Blues', xticklabels=np.unique(labels), yticklabels=np.unique(labels))
-    plt.xlabel('Predicted')
-    plt.ylabel('Actual')
-    plt.title(f'{model.__class__.__name__} - Confusion Matrix (Last Fold)')
-    plt.show()
-
-    # Return key metrics for further analysis
     return {
         'avg_train_accuracy': avg_train_accuracy,
         'avg_test_accuracy': avg_test_accuracy,
@@ -591,13 +578,25 @@ def test_feature_combinations(
     return sorted_results
 
 
-def evaluate_kmeans_feature_groups(feature_groups_selection, loaded_data, k=10, use_kmeans_pp=True, n_init=30, apply_pca_options=[True, False], verbose=True):
+
+def evaluate_kmeans_feature_groups(
+    feature_groups_selection, 
+    loaded_data, 
+    k=10, 
+    use_kmeans_pp=True, 
+    n_init=30, 
+    apply_pca_options=[True, False], 
+    n_pca_components=0.95,  # Number of PCA components as input
+    normalize=True,  # Allow normalization to be enabled/disabled
+    verbose=True
+):
     results_summary = []
 
+    # Loop through each feature group and PCA option
     for group_name, feature_selection in feature_groups_selection.items():
         for apply_pca in apply_pca_options:  
             if verbose:
-                print(f"\n🔄 Testing Feature Group: {group_name} with PCA={'Yes' if apply_pca else 'No'}")
+                print(f"\n🔄 Testing Feature Group: {group_name} with PCA={'Yes' if apply_pca else 'No'} and Normalize={'Yes' if normalize else 'No'}")
             
             selected_features, X_train, X_test, y_train, y_test, selected_features_names = load_and_split_features(
                 loaded_data, feature_selection
@@ -606,9 +605,9 @@ def evaluate_kmeans_feature_groups(feature_groups_selection, loaded_data, k=10, 
             X_full = np.vstack([X_train, X_test])
             y_full = np.hstack([y_train, y_test])
 
-            # Preprocess features
+            # Apply normalization based on the input parameter
             X_full, _ = preprocess_features(
-                X_full, X_full, normalize=True, apply_pca=apply_pca, n_pca_components=0.95, verbose=False
+                X_full, X_full, normalize=normalize, apply_pca=apply_pca, n_pca_components=n_pca_components, verbose=False
             )
 
             # Choose KMeans++ initialization if specified
@@ -657,7 +656,9 @@ def evaluate_kmeans_feature_groups(feature_groups_selection, loaded_data, k=10, 
             # Store results
             results_summary.append({
                 'Feature Group': group_name,
+                'Normalize': 'Yes' if normalize else 'No',
                 'PCA': 'Yes' if apply_pca else 'No',
+                'PCA Components': n_pca_components,
                 'KMeans Ini.': 'KMeans++' if use_kmeans_pp else 'Random',
                 'Sil. Score': silhouette,
                 'ARI Score': ari_score,
@@ -676,7 +677,91 @@ def evaluate_kmeans_feature_groups(feature_groups_selection, loaded_data, k=10, 
     print(results_df)
 
     # Save results to a meaningful CSV filename
+    filename = f"features/{filename}"
     results_df.to_csv(filename, index=False)
     print(f"\n✅ Results saved to {filename}")
 
+    return results_df
+
+def run_classifier_on_feature_groups(
+    feature_groups_selection, 
+    loaded_data, 
+    y, 
+    classifier, 
+    classifier_params, 
+    kfold_params, 
+    plot_boxplots=True, 
+    plot_confusion_matrix=True, 
+    display_iteration_details=True, 
+    display_classification_report=True
+):
+    results_summary = []
+
+    for group_name, feature_selection in feature_groups_selection.items():
+        print(f"\n🔄 Running {classifier.__class__.__name__} on Feature Group: {group_name}")
+        print(f"Selected features in this group: {[feat for feat, include in feature_selection.items() if include]}")
+
+        # Load and preprocess selected features
+        selected_features, X_train, X_test, y_train, y_test, selected_features_names = load_and_split_features(
+            loaded_data, feature_selection
+        )
+
+        print(f"Combined features shape: {selected_features.shape}")
+
+        # Extract preprocessing parameters for logging purposes
+        preprocess_params = kfold_params['preprocess_params']
+        normalize = preprocess_params.get('normalize', True)
+        apply_pca = preprocess_params.get('apply_pca', False)
+        n_pca_components = preprocess_params.get('n_pca_components', 0.9)
+
+        # Run K-Fold Cross-Validation with the given classifier
+        classifier_results = kfold_cross_validation(
+            features=selected_features,
+            labels=y,
+            selected_features_names=selected_features_names,
+            model=classifier,
+            model_params=classifier_params,
+            n_splits=kfold_params['n_splits'],
+            preprocess_params=preprocess_params,
+            overfit_threshold=kfold_params['overfit_threshold'],
+            plot_boxplots=plot_boxplots,
+            plot_confusion_matrix=plot_confusion_matrix,
+            display_iteration_details=display_iteration_details,
+            display_classification_report=display_classification_report
+        )
+
+        # Extract key metrics
+        train_acc = classifier_results.get('avg_train_accuracy', None)
+        test_acc = classifier_results.get('avg_test_accuracy', None)
+        overfitting_status = classifier_results.get('overfitting_status', 'Unknown')
+        overfitting_gap = classifier_results.get('overfitting_gap', 'N/A')
+        auc = classifier_results.get('avg_auc', 'N/A')
+
+        if train_acc is None or test_acc is None:
+            print(f"⚠️ Warning: Train/Test accuracy keys are not found for feature group {group_name}.")
+            continue
+
+        # Store results in the summary, including preprocessing details
+        results_summary.append({
+            'Feature Group': group_name,
+            'Classifier': classifier.__class__.__name__,
+            'Normalize': normalize,
+            'Apply PCA': apply_pca,
+            'PCA Components': n_pca_components,
+            'AUC': auc,
+            'Train Accuracy': train_acc,
+            'Test Accuracy': test_acc,
+            'Overfitting Gap': overfitting_gap,
+            'Overfitting Status': overfitting_status,
+            'AUC': auc
+        })
+
+    # Display results in a DataFrame
+    results_df = pd.DataFrame(results_summary)
+    print("\n📊 Classifier Results Summary:")
+    print(results_df)
+
+    # Save to CSV
+    results_df.to_csv(f"features/{classifier.__class__.__name__}_feature_group_results.csv", index=False)
+    print(f"✅ Results saved to features/{classifier.__class__.__name__}_feature_group_results.csv")
     return results_df
