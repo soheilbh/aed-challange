@@ -364,8 +364,6 @@ def grid_search_hyperparameter_tuning(model, param_grid, X_train, y_train,
         return None, None, None
 
 # Function to perform K-Fold Cross-Validation with optional preprocessing and evaluation metrics
-from sklearn.metrics import classification_report
-
 def kfold_cross_validation(
     features,
     labels,
@@ -487,6 +485,51 @@ def kfold_cross_validation(
     print(f" - Average Recall: {avg_recall:.4f}")
     print(f" - Average F1-score: {avg_f1_score:.4f}")
     print(f" - Overfitting Status: {overfitting_status} (Train-Test Gap: {overfitting_gap:.4f})")
+
+    # --- Boxplot Visualization ---
+    if plot_boxplots:
+        fig, axes = plt.subplots(1, 4, figsize=(20, 5))
+        axes[0].boxplot([train_accuracies, test_accuracies], labels=["Train", "Test"], patch_artist=True, 
+                        boxprops=dict(facecolor="skyblue"), medianprops=dict(color="red"))
+        axes[0].set_title("Accuracy per Fold")
+        axes[0].set_ylabel("Accuracy")
+        
+        if auc_scores:
+            axes[1].boxplot(auc_scores, labels=["AUC"], patch_artist=True, 
+                            boxprops=dict(facecolor="lightgreen"), medianprops=dict(color="red"))
+            axes[1].set_title("AUC per Fold")
+            axes[1].set_ylabel("AUC")
+
+        # Boxplot for TPR and FPR
+        axes[2].boxplot([tpr_list, fpr_list], labels=["TPR", "FPR"], patch_artist=True, 
+                        boxprops=dict(facecolor="lightcoral"), medianprops=dict(color="black"))
+        axes[2].set_title("TPR and FPR per Fold")
+        axes[2].set_ylabel("Rate")
+
+        # Boxplot for Precision, Recall, F1-score
+        axes[3].boxplot([precisions, recalls, f1_scores], labels=["Precision", "Recall", "F1-score"], 
+                        patch_artist=True, boxprops=dict(facecolor="lightblue"), medianprops=dict(color="black"))
+        axes[3].set_title("Precision, Recall, F1 per Fold")
+        axes[3].set_ylabel("Score")
+
+        plt.tight_layout()
+        plt.show()
+
+    # --- Confusion Matrix Visualization ---
+    if plot_confusion_matrix:
+        print("\nConfusion Matrix (Last Fold):")
+        plt.figure(figsize=(14, 6))
+        sns.heatmap(conf_matrices[-1], annot=True, fmt='d', cmap='Blues', 
+                    xticklabels=np.unique(labels), yticklabels=np.unique(labels))
+        plt.xlabel('Predicted')
+        plt.ylabel('Actual')
+        plt.title(f'Confusion Matrix for Last Fold')
+        plt.show()
+
+    # --- Classification Report ---
+    if display_classification_report:
+        print("\nClassification Report (Last Fold):")
+        print(classification_report(y_test, y_test_pred))
 
     return {
         'avg_train_accuracy': avg_train_accuracy,
