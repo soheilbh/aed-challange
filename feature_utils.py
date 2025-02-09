@@ -765,3 +765,16 @@ def run_classifier_on_feature_groups(
     results_df.to_csv(f"features/{classifier.__class__.__name__}_feature_group_results.csv", index=False)
     print(f"✅ Results saved to features/{classifier.__class__.__name__}_feature_group_results.csv")
     return results_df
+
+def print_feature_groups_with_totals(groups, loaded_data):
+    for group_name, features_dict in groups.items():
+        selected_features = [
+            f"{feature} ({loaded_data[feature].shape[1]} components)" 
+            for feature, included in features_dict.items() if included
+        ]
+        total_components = sum(
+            loaded_data[feature].shape[1] for feature, included in features_dict.items() if included
+        )
+        
+        print(f"\n🔍 Feature Group: {group_name} | Total Features: {total_components} components")
+        print(f"Selected Features: {', '.join(selected_features) if selected_features else 'None selected'}")
