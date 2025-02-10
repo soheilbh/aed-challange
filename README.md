@@ -624,17 +624,19 @@ Detailed dimensionality-reduction approaches and the final extracted components 
 ### Amir's Notebook
 
 - **File**: [PCA-ICA_Amir.ipynb](PCA_ICA/pca_ica.ipynb)
-- Words Founded: - `Fink` - ``
+- Words Founded: - PCA: `Fink` - ICA:`TENSORFLOW`
 
 ### Mina's Notebook
 
 - **File**: [PCA-ICA_Mina.ipynb](PCA_ICA/PCA-ICA_Mina.ipynb)
-- Words Founded: - `word here` - `word here`
+- Words Founded: - PCA: `Roz` - ICA: `NLTK`
 
 ### Soheil's Notebook
 
 - **File**: [PCA-ICA_Soheil.ipynb](PCA_ICA/PCA-ICA_Soheil.ipynb)
-- Words Founded: - `word here` - `word here`
+- Words Founded: - PCA: `Brightbill` - `Keras`
+
+The answer to the ICA riddle is a Python library, and for PCA, it is Wild Robot. More explanations can be found in the notebooks.
 
 ---
 
